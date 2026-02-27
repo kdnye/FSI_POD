@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import URL # Add this import at the top
+from sqlalchemy import URL
 
 load_dotenv()
 
@@ -27,33 +27,33 @@ def _get_env(name: str, default: str | None = None, required_in_production: bool
     return value
 
 def get_runtime_config() -> dict:
-    # 1. Safely retrieve fragmented database credentials
+    # Prefer fragmented DB secrets when available.
     db_user = os.getenv("DB_USER", "").strip()
     db_pass = os.getenv("DB_PASS", "").strip()
     db_name = os.getenv("DB_NAME", "").strip()
-    
-    # 2. Evaluate connection strategy
+    cloud_sql_connection_name = os.getenv("CLOUD_SQL_CONNECTION_NAME", "").strip()
+
     if db_user and db_pass and db_name:
-        cloud_sql_con = "quote-tool-483716:us-central1:quote-postgres"
-        db_url = URL.create(
-            drivername="postgresql+psycopg",
-            username=db_user,
-            password=db_pass,
-            database=db_name,
-            query={"host": f"/cloudsql/{cloud_sql_con}"}
-        )
-        db_url_str = db_url.render_as_string(hide_password=False)
+        db_kwargs = {
+            "drivername": "postgresql+psycopg",
+            "username": db_user,
+            "password": db_pass,
+            "database": db_name,
+        }
+        if cloud_sql_connection_name:
+            db_kwargs["query"] = {"host": f"/cloudsql/{cloud_sql_connection_name}"}
+
+        db_url_str = URL.create(**db_kwargs).render_as_string(hide_password=False)
     else:
-        # Fallback to the unified DATABASE_URL if fragmented secrets are empty
         db_url_str = os.getenv("DATABASE_URL", "").strip()
-        
+
         if _is_production() and not db_url_str:
             raise RuntimeError(
                 "Missing database credentials. Please ensure DB_USER, DB_PASS, and DB_NAME "
                 "are populated, or provide a unified DATABASE_URL via Secret Manager."
             )
         elif not _is_production() and not db_url_str:
-            db_url_str = "sqlite:///fsi-app.db"
+            db_url_str = "postgresql+psycopg://localhost/fsi_app"
 
     return {
         "SECRET_KEY": _get_env("SECRET_KEY", "dev-only-change-me", required_in_production=True).strip(),
