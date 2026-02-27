@@ -3,6 +3,8 @@ from enum import Enum
 from typing import Optional
 from sqlalchemy import Boolean, Enum as SQLALchemyEnum
 from sqlalchemy.orm import Mapped
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Import the initialized db from your main app
 from app import db
@@ -59,3 +61,28 @@ class User(db.Model):
     def can_access_portal(self) -> bool:
         """Standard FSI guard check."""
         return self.employee_approved and self.is_active
+
+class PODEvent(db.Model):
+    __tablename__ = "pod_events"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    reference_id = db.Column(db.String(100), index=True) # E.g., Order or BOL number from QR
+    event_type = db.Column(db.String(20)) # 'PICKUP' or 'DELIVERY'
+    
+    # Geolocation
+    latitude = db.Column(db.Numeric(10, 7))
+    longitude = db.Column(db.Numeric(10, 7))
+    
+    # Timestamps
+    utc_timestamp = db.Column(db.DateTime(timezone=True), default=datetime.utcnow)
+    az_timestamp = db.Column(db.DateTime(timezone=True))
+    
+    # Media Links
+    signature_url = db.Column(db.String(512))
+    photo_url = db.Column(db.String(512))
+
+    def set_az_timestamp(self):
+        """Translates current UTC time to Arizona time (MST, no DST)."""
+        utc_now = datetime.now(ZoneInfo("UTC"))
+        self.az_timestamp = utc_now.astimezone(ZoneInfo("America/Phoenix"))        
