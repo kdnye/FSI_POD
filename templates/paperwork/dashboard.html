@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Live Ops Dashboard | FSI{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h1 class="fsi-display" style="margin: 0;">Live Operations Dashboard</h1>
+        <span id="sync-status" class="fsi-badge-success">Live Syncing...</span>
+    </div>
+
+    <table class="fsi-table" style="width: 100%; text-align: left; border-collapse: collapse;">
+        <thead>
+            <tr style="border-bottom: 2px solid var(--color-border);">
+                <th style="padding: 0.75rem;">Batch ID</th>
+                <th style="padding: 0.75rem;">Reference / BOL</th>
+                <th style="padding: 0.75rem;">Consignee</th>
+                <th style="padding: 0.75rem;">Status</th>
+                <th style="padding: 0.75rem;">Last Updated</th>
+            </tr>
+        </thead>
+        <tbody id="dashboard-body">
+            <tr><td colspan="5" style="padding: 1rem; text-align: center;">Loading live data...</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const tbody = document.getElementById("dashboard-body");
+
+    function getStatusBadge(status) {
+        if (status === 'DELIVERY') return `<span style="color: green; font-weight: bold;">DELIVERED</span>`;
+        if (status === 'PICKUP') return `<span style="color: var(--fsi-gold); font-weight: bold;">IN TRANSIT</span>`;
+        return `<span style="color: gray;">PENDING</span>`;
+    }
+
+    async function fetchDashboardData() {
+        try {
+            const response = await fetch('{{ url_for("paperwork.api_live_deliveries") }}');
+            if (!response.ok) throw new Error("Network response was not ok");
+            
+            const data = await response.json();
+            
+            tbody.innerHTML = ""; // Clear existing rows
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="padding: 1rem; text-align: center;">No active batches.</td></tr>`;
+                return;
+            }
+
+            data.forEach(row => {
+                const tr = document.createElement("tr");
+                tr.style.borderBottom = "1px solid var(--color-border)";
+                tr.innerHTML = `
+                    <td style="padding: 0.75rem;">${row.batch_id}</td>
+                    <td style="padding: 0.75rem; font-family: monospace;">${row.reference_id}</td>
+                    <td style="padding: 0.75rem;">${row.consignee}<br><small style="color: gray;">${row.address}</small></td>
+                    <td style="padding: 0.75rem;">${getStatusBadge(row.status)}</td>
+                    <td style="padding: 0.75rem;">${row.last_updated}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error("Dashboard sync failed:", error);
+            document.getElementById("sync-status").innerText = "Sync Error - Retrying...";
+            document.getElementById("sync-status").style.color = "red";
+        }
+    }
+
+    // Initial fetch
+    fetchDashboardData();
+
+    // Poll every 10 seconds for real-time updates
+    setInterval(fetchDashboardData, 10000);
+});
+</script>
+{% endblock %}
