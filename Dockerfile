@@ -19,4 +19,4 @@ COPY . .
 EXPOSE 8080
 
 # Cloud Run provides $PORT. Gunicorn is used for production WSGI serving.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 120 wsgi:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 2 --threads 4 --timeout 120 wsgi:app"]
