@@ -27,13 +27,13 @@ steps:
       - --allow-unauthenticated
       - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
       - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod
-      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DB_USER=expense_db_user:latest,DB_PASS=expense_db_pass:latest,DB_NAME=expense_db_name:latest,COUCHDROP_TOKEN=COUCHDROP_TOKEN:latest
+      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,COUCHDROP_TOKEN=COUCHDROP_TOKEN:latest
 
 images:
   - ${_IMAGE}
 
 substitutions:
-  _SERVICE_NAME: fsi-app
+  _SERVICE_NAME: fsi-pod
   _REGION: us-central1
   _REPOSITORY: fsi
   _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
