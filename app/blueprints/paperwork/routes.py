@@ -9,6 +9,8 @@ from models import PODEvent
 from app.blueprints.auth.guards import require_employee_approval
 from app.services.couchdrop import CouchdropService
 from app.services.gcs import GCSService
+from sqlalchemy.orm import aliased
+from models import ExpectedDelivery
 
 paperwork_bp = Blueprint("paperwork", __name__)
 
@@ -117,3 +119,48 @@ def upload():
 @require_employee_approval()
 def history():
     return render_template("paperwork/history.html", title="Upload History")
+
+# --- 4. NEW: Ops Dashboard UI ---
+@paperwork_bp.route("/ops/dashboard")
+@require_employee_approval()
+def ops_dashboard():
+    # Only allow Admin or Supervisor to view the ops dashboard (optional RBAC)
+    if g.current_user.role.value not in ["ADMIN", "SUPERVISOR"]:
+        flash("Unauthorized access.")
+        return redirect(url_for("paperwork.history"))
+        
+    return render_template("paperwork/dashboard.html", title="Live Ops Dashboard")
+
+# --- 5. NEW: Real-Time Data Feed ---
+@paperwork_bp.route("/api/deliveries/live")
+@require_employee_approval()
+def api_live_deliveries():
+    """Returns the current state of expected deliveries and latest POD events."""
+    # Fetch today's expected deliveries
+    deliveries = ExpectedDelivery.query.order_by(ExpectedDelivery.id.desc()).limit(50).all()
+    
+    payload = []
+    for d in deliveries:
+        # Find the latest event for this reference ID
+        latest_event = PODEvent.query.filter_by(reference_id=d.reference_id).order_by(PODEvent.id.desc()).first()
+        
+        status = d.status
+        timestamp = None
+        
+        # Determine real-time status based on events
+        if latest_event:
+            status = latest_event.event_type # 'PICKUP' or 'DELIVERY'
+            # Format Arizona time if available
+            timestamp = latest_event.az_timestamp.strftime("%I:%M %p MST") if latest_event.az_timestamp else "Recent"
+
+        payload.append({
+            "reference_id": d.reference_id,
+            "consignee": d.consignee_name,
+            "address": d.destination_address,
+            "status": status,
+            "last_updated": timestamp or "Pending",
+            "batch_id": d.batch_id
+        })
+        
+    return jsonify(payload)
+
