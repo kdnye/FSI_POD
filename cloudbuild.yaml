@@ -26,7 +26,7 @@ steps:
       - --image=${_IMAGE}
       - --allow-unauthenticated
       - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
-      - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true
+      - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod
       - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DB_USER=expense_db_user:latest,DB_PASS=expense_db_pass:latest,DB_NAME=expense_db_name:latest,COUCHDROP_TOKEN=COUCHDROP_TOKEN:latest
 
 images:
