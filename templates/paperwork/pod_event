@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Capture POD Event | FSI{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+    <h1 class="fsi-display">Record POD Event</h1>
+    
+    <form id="podEventForm" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" id="latitude" name="latitude">
+        <input type="hidden" id="longitude" name="longitude">
+
+        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+            <label>Scan BOL / Reference QR</label>
+            <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto; border: 1px solid var(--color-border);"></div>
+            <input type="text" id="reference_id" name="reference_id" class="fsi-input" placeholder="Reference ID (Scanned or Manual)" required>
+        </div>
+
+        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+            <label>Event Type</label>
+            <select name="event_type" id="event_type" class="fsi-input" required>
+                <option value="PICKUP">Pickup</option>
+                <option value="DELIVERY">Delivery</option>
+            </select>
+        </div>
+
+        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+            <label>Capture POD Photo</label>
+            <input type="file" id="pod_photo" name="pod_photo" accept="image/*" capture="environment" class="fsi-input" required>
+        </div>
+
+        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+            <label>Consignee Signature</label>
+            <div style="border: 1px solid var(--color-border); border-radius: 0.55rem; overflow: hidden; background: #fff;">
+                <canvas id="signature-pad" width="400" height="200" style="touch-action: none; width: 100%;"></canvas>
+            </div>
+            <button type="button" class="fsi-secondary-btn" id="clear-signature" style="margin-top: 0.5rem; width: fit-content;">Clear Signature</button>
+        </div>
+
+        <button class="fsi-primary-btn" id="submitBtn" type="submit">Submit POD Event</button>
+        <div id="statusMessage" style="margin-top: 15px; font-weight: bold;"></div>
+    </form>
+</section>
+
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // --- Geolocation Capture ---
+    function captureLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    document.getElementById('latitude').value = position.coords.latitude;
+                    document.getElementById('longitude').value = position.coords.longitude;
+                },
+                (error) => { console.warn("GPS capture failed: ", error.message); },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        }
+    }
+
+    // --- QR Scanner Initialization ---
+    const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+    html5QrcodeScanner.render((decodedText, decodedResult) => {
+        document.getElementById('reference_id').value = decodedText;
+        html5QrcodeScanner.clear(); // Stop scanning once found
+        captureLocation(); // Grab GPS exact moment of scan
+    }, (errorMessage) => {
+        // Suppress continuous read errors
+    });
+
+    // --- Signature Pad Initialization ---
+    const canvas = document.getElementById('signature-pad');
+    const signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
+
+    // Handle canvas resizing for responsive layouts
+    function resizeCanvas() {
+        const ratio =  Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        canvas.getContext("2d").scale(ratio, ratio);
+        signaturePad.clear();
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    document.getElementById('clear-signature').addEventListener('click', () => signaturePad.clear());
+
+    // --- Form Submission Assembly ---
+    document.getElementById('podEventForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (signaturePad.isEmpty()) {
+            alert("Please provide a signature.");
+            return;
+        }
+
+        const submitBtn = document.getElementById('submitBtn');
+        const statusDiv = document.getElementById('statusMessage');
+        submitBtn.disabled = true;
+        statusDiv.innerText = "Submitting event data...";
+
+        // Ensure GPS is captured if QR scan was skipped manually
+        if (!document.getElementById('latitude').value) captureLocation();
+
+        const formData = new FormData(this);
+        
+        // Export signature as base64 PNG and append to payload
+        const signatureDataUrl = signaturePad.toDataURL("image/png");
+        formData.append('signature_base64', signatureDataUrl);
+
+        try {
+            const response = await fetch('{{ url_for("paperwork.log_pod_event") }}', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                body: formData
+            });
+            
+            if (response.ok) {
+                statusDiv.innerText = "POD Event successfully recorded.";
+                statusDiv.style.color = "green";
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                const err = await response.json();
+                statusDiv.innerText = "Error: " + err.error;
+                statusDiv.style.color = "red";
+                submitBtn.disabled = false;
+            }
+        } catch (error) {
+            statusDiv.innerText = "Network error occurred.";
+            statusDiv.style.color = "red";
+            submitBtn.disabled = false;
+        }
+    });
+});
+</script>
+{% endblock %}
