@@ -85,4 +85,18 @@ class PODEvent(db.Model):
     def set_az_timestamp(self):
         """Translates current UTC time to Arizona time (MST, no DST)."""
         utc_now = datetime.now(ZoneInfo("UTC"))
-        self.az_timestamp = utc_now.astimezone(ZoneInfo("America/Phoenix"))        
+        self.az_timestamp = utc_now.astimezone(ZoneInfo("America/Phoenix"))
+
+class ExpectedDelivery(db.Model):
+    __tablename__ = "expected_deliveries"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.String(50), index=True) # Grouping ID for a truck/route
+    reference_id = db.Column(db.String(100), unique=True, index=True) # Matches QR code
+    consignee_name = db.Column(db.String(150))
+    destination_address = db.Column(db.String(255))
+    
+    # Dynamic status evaluated on the fly or updated via triggers
+    status = db.Column(db.String(20), default="PENDING") # PENDING, PICKED_UP, DELIVERED
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
