@@ -13,7 +13,7 @@ steps:
       - push
       - ${_IMAGE}
 
-  - id: Deploy to Cloud Run
+ - id: Deploy to Cloud Run
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -25,8 +25,9 @@ steps:
       - --platform=managed
       - --image=${_IMAGE}
       - --allow-unauthenticated
+      - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
       - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true
-      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest
+      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DB_USER=expense_db_user:latest,DB_PASS=expense_db_pass:latest,DB_NAME=expense_db_name:latest,COUCHDROP_TOKEN=COUCHDROP_TOKEN:latest
 
 images:
   - ${_IMAGE}
