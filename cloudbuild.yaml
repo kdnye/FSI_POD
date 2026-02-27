@@ -13,7 +13,7 @@ steps:
       - push
       - ${_IMAGE}
 
- - id: Deploy to Cloud Run
+  - id: Deploy to Cloud Run
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
