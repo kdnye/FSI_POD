@@ -27,26 +27,37 @@ def _get_env(name: str, default: str | None = None, required_in_production: bool
     return value
 
 def get_runtime_config() -> dict:
-    # 1. Fetch and safely strip trailing newlines (\n) from Secret Manager
-    db_user = _get_env("DB_USER", required_in_production=True).strip()
-    db_pass = _get_env("DB_PASS", required_in_production=True).strip()
-    db_name = _get_env("DB_NAME", required_in_production=True).strip()
+    # 1. Safely retrieve fragmented database credentials
+    db_user = os.getenv("DB_USER", "").strip()
+    db_pass = os.getenv("DB_PASS", "").strip()
+    db_name = os.getenv("DB_NAME", "").strip()
     
-    cloud_sql_con = "quote-tool-483716:us-central1:quote-postgres"
-
-    # 2. FIXED: Use 'query' to properly format the Unix Socket path for Cloud Run
-    db_url = URL.create(
-        drivername="postgresql+psycopg",
-        username=db_user,
-        password=db_pass,
-        database=db_name,
-        query={"host": f"/cloudsql/{cloud_sql_con}"}  # <--- This is the critical change
-    )
+    # 2. Evaluate connection strategy
+    if db_user and db_pass and db_name:
+        cloud_sql_con = "quote-tool-483716:us-central1:quote-postgres"
+        db_url = URL.create(
+            drivername="postgresql+psycopg",
+            username=db_user,
+            password=db_pass,
+            database=db_name,
+            query={"host": f"/cloudsql/{cloud_sql_con}"}
+        )
+        db_url_str = db_url.render_as_string(hide_password=False)
+    else:
+        # Fallback to the unified DATABASE_URL if fragmented secrets are empty
+        db_url_str = os.getenv("DATABASE_URL", "").strip()
+        
+        if _is_production() and not db_url_str:
+            raise RuntimeError(
+                "Missing database credentials. Please ensure DB_USER, DB_PASS, and DB_NAME "
+                "are populated, or provide a unified DATABASE_URL via Secret Manager."
+            )
+        elif not _is_production() and not db_url_str:
+            db_url_str = "sqlite:///fsi-app.db"
 
     return {
         "SECRET_KEY": _get_env("SECRET_KEY", "dev-only-change-me", required_in_production=True).strip(),
-        # Render the URL object to a string securely
-        "SQLALCHEMY_DATABASE_URI": db_url.render_as_string(hide_password=False),
+        "SQLALCHEMY_DATABASE_URI": db_url_str,
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "DEBUG": _str_to_bool(os.getenv("DEBUG"), default=False),
         "PORT": int(os.getenv("PORT", "8080")),
