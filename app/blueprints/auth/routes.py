@@ -43,7 +43,7 @@ def login_submit():
     session["current_user_id"] = user.id
     
     # Route directly to the paperwork app rather than the boilerplate endpoint
-    return redirect(url_for("paperwork.upload"))
+    return redirect(url_for(""paperwork.log_pod_event""))
 
 
 @auth_bp.get("/logout")
