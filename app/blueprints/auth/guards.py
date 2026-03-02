@@ -17,7 +17,10 @@ def _load_current_user() -> User | None:
     return db.session.get(User, user_id)
 
 
-def require_employee_approval(redirect_endpoint: str | None = None) -> Callable:
+def require_employee_approval(
+    redirect_endpoint: str | None = None,
+    unauthenticated_redirect_endpoint: str | None = "auth.login_page",
+) -> Callable:
     """Block access when the current user is not approved."""
 
     def decorator(view: Callable) -> Callable:
@@ -25,6 +28,8 @@ def require_employee_approval(redirect_endpoint: str | None = None) -> Callable:
         def wrapped(*args, **kwargs):
             user = getattr(g, "current_user", None)
             if user is None:
+                if unauthenticated_redirect_endpoint:
+                    return redirect(url_for(unauthenticated_redirect_endpoint))
                 abort(401)
 
             if user.employee_approved:
