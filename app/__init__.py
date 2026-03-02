@@ -39,9 +39,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(account_bp)
     app.register_blueprint(paperwork_bp)
 
-    # Root redirect to login page
+    
     @app.get("/")
     def index():
-        return redirect(url_for("auth.login_page"))
+        return redirect(url_for("paperwork.log_pod_event"))
 
     return app
