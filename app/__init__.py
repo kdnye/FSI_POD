@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for
+from flask import Flask, g, redirect, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
@@ -42,6 +42,8 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     
     @app.get("/")
     def index():
+        if getattr(g, "current_user", None) is None:
+            return redirect(url_for("auth.login_page"))
         return redirect(url_for("paperwork.log_pod_event"))
 
     return app
