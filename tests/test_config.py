@@ -70,3 +70,27 @@ def test_get_runtime_config_accepts_explicit_secure_cookie_overrides(monkeypatch
 
     assert runtime_config["SESSION_COOKIE_SECURE"] is False
     assert runtime_config["REMEMBER_COOKIE_SECURE"] is False
+
+
+def test_get_runtime_config_accepts_database_url_without_fragmented_secrets(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "prod-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
+    monkeypatch.delenv("DB_USER", raising=False)
+    monkeypatch.delenv("DB_PASS", raising=False)
+    monkeypatch.delenv("DB_NAME", raising=False)
+
+    runtime_config = config.get_runtime_config()
+
+    assert runtime_config["SQLALCHEMY_DATABASE_URI"] == "postgresql+psycopg://db/prod"
+
+
+def test_get_runtime_config_rejects_partial_fragmented_db_credentials(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "prod-secret")
+    monkeypatch.setenv("DB_USER", "fsi")
+    monkeypatch.delenv("DB_PASS", raising=False)
+    monkeypatch.delenv("DB_NAME", raising=False)
+
+    with pytest.raises(RuntimeError, match="Incomplete database credentials"):
+        config.get_runtime_config()

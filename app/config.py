@@ -32,6 +32,13 @@ def get_runtime_config() -> dict:
     db_pass = os.getenv("DB_PASS", "").strip()
     db_name = os.getenv("DB_NAME", "").strip()
     cloud_sql_connection_name = os.getenv("CLOUD_SQL_CONNECTION_NAME", "").strip()
+    has_fragmented_db_values = any([db_user, db_pass, db_name])
+
+    if has_fragmented_db_values and not all([db_user, db_pass, db_name]):
+        raise RuntimeError(
+            "Incomplete database credentials. If using fragmented configuration, set DB_USER, "
+            "DB_PASS, and DB_NAME together, or provide a unified DATABASE_URL."
+        )
 
     if db_user and db_pass and db_name:
         db_kwargs = {
