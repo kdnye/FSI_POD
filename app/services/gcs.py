@@ -51,7 +51,7 @@ class GCSService:
         ext = file_obj.filename.split(".")[-1] if file_obj.filename and "." in file_obj.filename else "png"
         destination_path = f"/POD/{folder}/{uuid.uuid4().hex}.{ext}"
 
-        file_obj.seek(0)
+        file_obj.stream.seek(0)
         file_bytes = file_obj.read()
         if not file_bytes:
             logging.error("Couchdrop Upload Aborted: empty file stream for %s", file_obj.filename)
@@ -59,18 +59,24 @@ class GCSService:
 
         headers = {
             "token": token.strip(),
-            "Content-Type": "application/octet-stream",
-            "Content-Length": str(len(file_bytes)),
+        }
+
+        files = {
+            "file": (
+                file_obj.filename,
+                file_bytes,
+                file_obj.content_type or "application/octet-stream",
+            )
         }
 
         try:
             GCSService._ensure_couchdrop_path_exists(token, os.path.dirname(destination_path))
 
-            response = requests.put(
+            response = requests.post(
                 "https://fileio.couchdrop.io/file/upload",
                 headers=headers,
                 params={"path": destination_path},
-                data=file_bytes,
+                files=files,
                 timeout=30,
             )
 

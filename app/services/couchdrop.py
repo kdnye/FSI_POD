@@ -62,7 +62,7 @@ class CouchdropService:
             logging.error("Couchdrop upload aborted: unable to ensure folder path %s", folder_path)
             return False
 
-        file_storage.seek(0)
+        file_storage.stream.seek(0)
         file_bytes = file_storage.read()
         if not file_bytes:
             logging.error("Couchdrop upload aborted: received empty file bytes.")
@@ -70,16 +70,22 @@ class CouchdropService:
 
         headers = {
             "token": token,
-            "Content-Type": "application/octet-stream",
-            "Content-Length": str(len(file_bytes)),
+        }
+
+        files = {
+            "file": (
+                file_storage.filename,
+                file_bytes,
+                file_storage.content_type or "application/octet-stream",
+            )
         }
         
         try:
-            response = requests.put(
+            response = requests.post(
                 "https://fileio.couchdrop.io/file/upload",
                 headers=headers,
                 params={"path": remote_path},
-                data=file_bytes,
+                files=files,
                 timeout=timeout_seconds,
             )
             
