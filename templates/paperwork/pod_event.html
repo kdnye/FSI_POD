@@ -26,6 +26,17 @@
             <p><strong>Phone:</strong> <span id="summary-phone">-</span></p>
         </div>
 
+        <div id="off-sheet-warning" class="fsi-form-grid pod-event-fieldset" style="display: none; border: 1px solid #d32f2f;">
+            <label>Off-Sheet Confirmation Required</label>
+            <p id="off-sheet-warning-text" style="color: #d32f2f; margin: 0;"></p>
+            <label style="display: flex; gap: 8px; align-items: center;">
+                <input type="checkbox" id="off-sheet-confirm-checkbox">
+                I confirm I understand this off-sheet reassignment warning.
+            </label>
+            <label for="reassignment_note">Reassignment Note (Optional)</label>
+            <textarea id="reassignment_note" name="reassignment_note" class="fsi-input" rows="3" placeholder="Add context for this reassignment."></textarea>
+        </div>
+
         <div class="fsi-form-grid pod-event-fieldset">
             <label>Action Type</label>
             <select name="action_type" id="action_type" class="fsi-input" required>
@@ -81,6 +92,19 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const summaryShell = document.getElementById('load-board-summary');
     const modeText = document.getElementById('scan-mode');
+    const offSheetWarningShell = document.getElementById('off-sheet-warning');
+    const offSheetWarningText = document.getElementById('off-sheet-warning-text');
+    const offSheetConfirmCheckbox = document.getElementById('off-sheet-confirm-checkbox');
+    const reassignmentNoteInput = document.getElementById('reassignment_note');
+    let warningRequired = false;
+
+    function resetWarningState() {
+        warningRequired = false;
+        offSheetConfirmCheckbox.checked = false;
+        reassignmentNoteInput.value = '';
+        offSheetWarningText.textContent = '';
+        offSheetWarningShell.style.display = 'none';
+    }
 
     async function lookupHwb() {
         const hwbNumber = document.getElementById('hwb_number').value.trim();
@@ -111,9 +135,19 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('summary-phone').textContent = payload.phone;
             summaryShell.style.display = 'block';
             modeText.textContent = 'Enhanced mode: Load Board record found.';
+
+            warningRequired = Boolean(payload.warning_required);
+            if (warningRequired) {
+                offSheetWarningText.textContent = payload.warning_message || 'Off-sheet confirmation is required.';
+                offSheetWarningShell.style.display = 'block';
+                offSheetConfirmCheckbox.checked = false;
+            } else {
+                resetWarningState();
+            }
         } else {
             summaryShell.style.display = 'none';
             modeText.textContent = 'Base mode: No load board match, manual POD will be recorded.';
+            resetWarningState();
         }
     }
 
@@ -156,6 +190,11 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
+        if (warningRequired && !offSheetConfirmCheckbox.checked) {
+            alert(offSheetWarningText.textContent || 'You must confirm the off-sheet warning to continue.');
+            return;
+        }
+
         const submitBtn = document.getElementById('submitBtn');
         const statusDiv = document.getElementById('statusMessage');
         submitBtn.disabled = true;
@@ -165,6 +204,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
         const formData = new FormData(this);
         formData.append('signature_base64', signaturePad.toDataURL("image/png"));
+        formData.append('off_sheet_confirmed', warningRequired ? String(offSheetConfirmCheckbox.checked) : 'false');
+        formData.append('reassignment_note', reassignmentNoteInput.value.trim());
 
         try {
             const response = await fetch('{{ url_for("paperwork.log_pod_event") }}', {

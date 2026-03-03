@@ -367,3 +367,150 @@ def test_non_ops_user_sees_only_my_pod_history_and_cannot_export_global_csv(clie
 
     export_response = client.get("/pod/history/export", follow_redirects=False)
     assert export_response.status_code == 302
+
+
+
+
+def test_scan_hwb_assigned_load_has_no_warning(client):
+    driver_id = _create_user("scan-assigned-driver@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-SCAN-ASSIGNED",
+            shipper="Acme",
+            consignee="Receiver",
+            contact_name="Contact",
+            phone="555-7777",
+            assigned_driver=driver_id,
+            status="Pending",
+        )
+    )
+    db.session.commit()
+
+    response = client.post("/pod/scan", json={"hwb_number": "HWB-SCAN-ASSIGNED"})
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["is_assigned_to_current_user"] is True
+    assert payload["warning_required"] is False
+
+def test_scan_hwb_includes_assignment_and_warning_flags(client):
+    driver_id = _create_user("scan-driver@example.com", role=Role.EMPLOYEE)
+    other_driver_id = _create_user("scan-other@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-SCAN-WARN",
+            shipper="Acme",
+            consignee="Receiver",
+            contact_name="Contact",
+            phone="555-8888",
+            assigned_driver=other_driver_id,
+            status="Pending",
+        )
+    )
+    db.session.commit()
+
+    response = client.post("/pod/scan", json={"hwb_number": "HWB-SCAN-WARN"})
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "enhanced"
+    assert payload["user_has_full_board_rights"] is False
+    assert payload["is_assigned_to_current_user"] is False
+    assert payload["warning_required"] is True
+    assert payload["warning_message"]
+
+
+def test_off_sheet_completion_without_confirmation_fails(client, monkeypatch):
+    driver_id = _create_user("offsheet-driver@example.com", role=Role.EMPLOYEE)
+    other_driver_id = _create_user("offsheet-other@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-OFF-NO-CONFIRM",
+            shipper="Acme",
+            consignee="Receiver",
+            contact_name="Contact",
+            phone="555-1111",
+            assigned_driver=other_driver_id,
+            status="Pending",
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("app.services.gcs.GCSService.upload_file", lambda *_args, **_kwargs: "gs://test/path")
+
+    response = client.post(
+        "/pod/event",
+        data={
+            "hwb_number": "HWB-OFF-NO-CONFIRM",
+            "action_type": "Delivery",
+            "recipient_name": "Receiver",
+            "signature_base64": "data:image/png;base64,aGVsbG8=",
+            "off_sheet_confirmed": "false",
+            "pod_photo": (BytesIO(b"pod-image"), "pod.jpg"),
+        },
+        headers={"Accept": "application/json"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 500
+    assert "requires confirmation" in response.get_json()["error"]
+
+    load = db.session.get(LoadBoard, "HWB-OFF-NO-CONFIRM")
+    assert load.assigned_driver == other_driver_id
+    assert load.status == "Pending"
+    assert PODRecord.query.filter_by(hwb_number="HWB-OFF-NO-CONFIRM").count() == 0
+
+
+def test_off_sheet_completion_with_confirmation_reassigns_and_completes(client, monkeypatch):
+    driver_id = _create_user("offsheet-ok-driver@example.com", role=Role.EMPLOYEE)
+    _create_user("offsheet-ok-other@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-OFF-CONFIRM",
+            shipper="Acme",
+            consignee="Receiver",
+            contact_name="Contact",
+            phone="555-2222",
+            assigned_driver=None,
+            status="Pending",
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("app.services.gcs.GCSService.upload_file", lambda *_args, **_kwargs: "gs://test/path")
+
+    response = client.post(
+        "/pod/event",
+        data={
+            "hwb_number": "HWB-OFF-CONFIRM",
+            "action_type": "Delivery",
+            "recipient_name": "Receiver",
+            "signature_base64": "data:image/png;base64,aGVsbG8=",
+            "off_sheet_confirmed": "true",
+            "reassignment_note": "Driver picked up off-sheet.",
+            "pod_photo": (BytesIO(b"pod-image"), "pod.jpg"),
+        },
+        headers={"Accept": "application/json"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+
+    load = db.session.get(LoadBoard, "HWB-OFF-CONFIRM")
+    assert load.assigned_driver == driver_id
+    assert load.status == "Delivered"
+
+    pod_record = PODRecord.query.filter_by(hwb_number="HWB-OFF-CONFIRM").one()
+    assert pod_record.off_sheet_confirmed is True
+    assert "Off-sheet confirmation accepted" in (pod_record.reassignment_note or "")
+    assert "Driver picked up off-sheet." in (pod_record.reassignment_note or "")
