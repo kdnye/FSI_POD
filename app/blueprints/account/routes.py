@@ -56,6 +56,7 @@ def admin_users():
         role_value = request.form.get("role", "").strip().upper()
         employee_approved = request.form.get("employee_approved") == "on"
         is_active = request.form.get("is_active") == "on"
+        is_ops = request.form.get("is_ops") == "on"
 
         if not user_id.isdigit():
             flash("Invalid user selection.", "error")
@@ -79,6 +80,7 @@ def admin_users():
         user.role = updated_role.value
         user.employee_approved = employee_approved
         user.is_active = is_active
+        user.is_ops = is_ops
         db.session.commit()
         flash(f"Updated access for {user.email}.", "success")
         return redirect(url_for("account.admin_users"))

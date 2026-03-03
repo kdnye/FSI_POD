@@ -48,3 +48,30 @@ def test_administrator_alias_is_treated_as_admin():
 
     assert decision.allowed is True
     assert "role=ADMINISTRATOR" in decision.message
+
+
+def test_ops_override_allows_load_board_and_pod_history_without_admin_role():
+    load_board_decision = evaluate_access(
+        user_role=Role.EMPLOYEE,
+        resource="load_board",
+        action="manage",
+        is_ops=True,
+    )
+    pod_history_decision = evaluate_access(
+        user_role=Role.SUPERVISOR,
+        resource="pod_history",
+        action="export",
+        is_ops=True,
+    )
+
+    assert load_board_decision.allowed is True
+    assert "ACCESS_GRANTED ops_override" in load_board_decision.message
+    assert pod_history_decision.allowed is True
+    assert "ACCESS_GRANTED ops_override" in pod_history_decision.message
+
+
+def test_non_ops_users_still_need_admin_for_ops_resources():
+    decision = evaluate_access(user_role=Role.SUPERVISOR, resource="load_board", action="manage")
+
+    assert decision.allowed is False
+    assert "ACCESS_DENIED insufficient_role" in decision.message

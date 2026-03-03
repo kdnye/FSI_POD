@@ -28,6 +28,17 @@ PERMISSION_POLICY: dict[str, dict[str, Role]] = {
     "admin_panel": {
         "manage": Role.ADMIN,
     },
+    "load_board": {
+        "manage": Role.ADMIN,
+    },
+    "pod_history": {
+        "export": Role.ADMIN,
+    },
+}
+
+OPS_RESOURCE_ACTIONS: set[tuple[str, str]] = {
+    ("load_board", "manage"),
+    ("pod_history", "export"),
 }
 
 
@@ -37,7 +48,7 @@ class AccessDecision:
     message: str
 
 
-def evaluate_access(*, user_role: Role | str, resource: str, action: str) -> AccessDecision:
+def evaluate_access(*, user_role: Role | str, resource: str, action: str, is_ops: bool = False) -> AccessDecision:
     try:
         normalized_role = Role.from_value(user_role)
     except ValueError:
@@ -51,6 +62,15 @@ def evaluate_access(*, user_role: Role | str, resource: str, action: str) -> Acc
 
     normalized_resource = resource.strip().lower()
     normalized_action = action.strip().lower()
+
+    if is_ops and (normalized_resource, normalized_action) in OPS_RESOURCE_ACTIONS:
+        return AccessDecision(
+            allowed=True,
+            message=(
+                f"ACCESS_GRANTED ops_override resource={normalized_resource} "
+                f"action={normalized_action} role={normalized_role.value}"
+            ),
+        )
 
     actions = PERMISSION_POLICY.get(normalized_resource)
     if actions is None:

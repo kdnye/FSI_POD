@@ -71,6 +71,7 @@ class User(db.Model):
         default="EMPLOYEE",
     )
     employee_approved: Mapped[bool] = db.Column(Boolean, nullable=False, default=False)
+    is_ops: Mapped[bool] = db.Column(Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, default=True)
     
     # Metadata
