@@ -2,90 +2,47 @@ import logging
 import os
 import uuid
 
-import requests
 from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
 
 
 class GCSService:
     @staticmethod
-    def _ensure_couchdrop_path_exists(token: str, folder_path: str) -> None:
-        """Create Couchdrop folders on-demand to avoid partial/empty uploads."""
-        if not folder_path or folder_path == "/":
-            return
-
-        headers = {"token": token.strip()}
-        current = ""
-        for segment in [part for part in folder_path.split("/") if part]:
-            current = f"{current}/{segment}"
-            check_response = requests.get(
-                "https://api.couchdrop.io/manage/fileprops",
-                headers=headers,
-                params={"path": current},
-                timeout=15,
-            )
-            if check_response.status_code == 200:
-                continue
-
-            mkdir_response = requests.post(
-                "https://fileio.couchdrop.io/file/mkdir",
-                headers=headers,
-                params={"path": current},
-                timeout=15,
-            )
-            if mkdir_response.status_code not in (200, 201):
-                raise ValueError(f"Unable to create destination folder: {current}")
-
-    @staticmethod
     def upload_file(file_obj: FileStorage, folder: str = "pod_events") -> str | None:
-        """
-        Uploads a Werkzeug FileStorage object to Couchdrop.
-        Replaces direct GCS uploads to use the FSI POD integration.
-        """
+        """Save a Werkzeug FileStorage object under /POD for POD page access."""
         if not file_obj:
             return None
 
-        token = os.getenv("COUCHDROP_TOKEN")
-        if not token:
-            raise ValueError("CRITICAL: COUCHDROP_TOKEN is missing.")
-
-        ext = file_obj.filename.split(".")[-1] if file_obj.filename and "." in file_obj.filename else "png"
-        destination_path = f"/POD/{folder}/{uuid.uuid4().hex}.{ext}"
-
-        file_obj.stream.seek(0)
-        file_bytes = file_obj.read()
-        if not file_bytes:
-            logging.error("Couchdrop Upload Aborted: empty file stream for %s", file_obj.filename)
+        if not getattr(file_obj, "filename", ""):
+            logging.error("POD upload aborted: missing filename.")
             return None
 
-        headers = {
-            "token": token.strip(),
-        }
+        safe_folder = os.path.normpath(folder or "pod_events").strip("/")
+        if safe_folder in ("", "."):
+            safe_folder = "pod_events"
 
-        files = {
-            "file": (
-                file_obj.filename,
-                file_bytes,
-                file_obj.content_type or "application/octet-stream",
-            )
-        }
+        if safe_folder.startswith("..") or "/../" in f"/{safe_folder}/":
+            logging.error("POD upload aborted: invalid folder path '%s'.", folder)
+            return None
+
+        safe_name = secure_filename(file_obj.filename)
+        ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else "png"
+
+        generated_name = f"{uuid.uuid4().hex}.{ext}"
+        destination_path = os.path.join("/POD", safe_folder, generated_name)
+        public_path = f"/POD/{safe_folder}/{generated_name}"
 
         try:
-            GCSService._ensure_couchdrop_path_exists(token, os.path.dirname(destination_path))
+            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
 
-            response = requests.post(
-                "https://fileio.couchdrop.io/file/upload",
-                headers=headers,
-                params={"path": destination_path},
-                files=files,
-                timeout=30,
-            )
-
-            if response.status_code not in (200, 201):
-                logging.error("Couchdrop Upload Failed [%s]: %s", response.status_code, response.text)
+            file_obj.stream.seek(0)
+            if not file_obj.stream.read(1):
+                logging.error("POD upload aborted: empty file stream for %s", file_obj.filename)
                 return None
 
-            return destination_path
-
-        except requests.RequestException as exc:
-            logging.error("Couchdrop Connection Error: %s", str(exc))
+            file_obj.stream.seek(0)
+            file_obj.save(destination_path)
+            return public_path
+        except Exception as exc:
+            logging.error("POD upload failed for %s: %s", file_obj.filename, str(exc))
             return None

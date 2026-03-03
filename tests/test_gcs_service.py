@@ -5,61 +5,41 @@ from werkzeug.datastructures import FileStorage
 from app.services.gcs import GCSService
 
 
-class _Response:
-    def __init__(self, status_code=200, text=""):
-        self.status_code = status_code
-        self.text = text
+def test_upload_file_rewinds_consumed_stream_and_saves_file(monkeypatch):
+    created_dirs = []
+    saved = {}
 
+    def fake_makedirs(path, exist_ok=False):
+        created_dirs.append((path, exist_ok))
 
-def test_upload_file_rewinds_consumed_stream_and_uploads_bytes(monkeypatch):
-    monkeypatch.setenv("COUCHDROP_TOKEN", "test-token")
+    def fake_save(path):
+        saved["path"] = path
+        saved["bytes"] = file_obj.stream.read()
 
-    calls = {"upload_data": None, "paths": [], "upload_headers": None}
-
-    def fake_get(url, headers=None, params=None, timeout=None):
-        calls["paths"].append(("get", params["path"]))
-        return _Response(status_code=200)
-
-    def fake_post(url, headers=None, params=None, data=None, timeout=None):
-        if url.endswith("/file/mkdir"):
-            calls["paths"].append(("mkdir", params["path"]))
-            return _Response(status_code=201)
-
-    def fake_put(url, headers=None, params=None, data=None, timeout=None):
-        calls["upload_data"] = data
-        calls["upload_headers"] = headers
-        return _Response(status_code=201)
-
-    monkeypatch.setattr("app.services.gcs.requests.get", fake_get)
-    monkeypatch.setattr("app.services.gcs.requests.post", fake_post)
-    monkeypatch.setattr("app.services.gcs.requests.put", fake_put)
+    monkeypatch.setattr("app.services.gcs.os.makedirs", fake_makedirs)
 
     file_obj = FileStorage(stream=BytesIO(b"photo-bytes"), filename="photo.jpg", content_type="image/jpeg")
-    file_obj.stream.read()  # consume stream first; upload should still rewind and send bytes
+    file_obj.stream.read()  # consume stream first; upload should still rewind before save
+    file_obj.save = fake_save
 
-    path = GCSService.upload_file(file_obj, folder="pod_photos/delivery")
+    public_path = GCSService.upload_file(file_obj, folder="pod_photos/delivery")
 
-    assert path is not None
-    assert calls["upload_data"] == b"photo-bytes"
-    assert calls["upload_headers"]["Content-Length"] == str(len(b"photo-bytes"))
+    assert public_path is not None
+    assert public_path.startswith("/POD/pod_photos/delivery/")
+    assert public_path.endswith(".jpg")
+    assert created_dirs and created_dirs[0][0] == "/POD/pod_photos/delivery"
+    assert created_dirs[0][1] is True
+    assert saved["bytes"] == b"photo-bytes"
+    assert saved["path"].startswith("/POD/pod_photos/delivery/")
 
 
 def test_upload_file_returns_none_for_empty_stream(monkeypatch):
-    monkeypatch.setenv("COUCHDROP_TOKEN", "test-token")
-
-    def fake_get(*_args, **_kwargs):
-        return _Response(status_code=200)
-
-    def fake_post(*_args, **_kwargs):
-        return _Response(status_code=201)
-
-    def fake_put(*_args, **_kwargs):
-        return _Response(status_code=201)
-
-    monkeypatch.setattr("app.services.gcs.requests.get", fake_get)
-    monkeypatch.setattr("app.services.gcs.requests.post", fake_post)
-    monkeypatch.setattr("app.services.gcs.requests.put", fake_put)
-
     file_obj = FileStorage(stream=BytesIO(b""), filename="empty.jpg", content_type="image/jpeg")
 
     assert GCSService.upload_file(file_obj, folder="pod_photos/delivery") is None
+
+
+def test_upload_file_rejects_path_traversal_folder():
+    file_obj = FileStorage(stream=BytesIO(b"photo-bytes"), filename="photo.jpg", content_type="image/jpeg")
+
+    assert GCSService.upload_file(file_obj, folder="../secrets") is None
