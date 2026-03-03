@@ -4,6 +4,23 @@
 {% block content %}
 <section class="fsi-card">
     <h1 class="fsi-display">POD History</h1>
+
+    {% if is_admin %}
+    <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+        <h2 style="margin-top: 0;">Admin CSV Exports</h2>
+        <p style="margin-top: 0.5rem;">
+            <a href="{{ url_for('paperwork.pod_history_export') }}">Download full POD history CSV</a>
+        </p>
+        <form method="get" action="{{ url_for('paperwork.pod_history_export') }}">
+            <label for="start">Start (ISO format)</label>
+            <input id="start" name="start" type="datetime-local">
+            <label for="end">End (ISO format)</label>
+            <input id="end" name="end" type="datetime-local">
+            <button type="submit">Download ranged CSV</button>
+        </form>
+    </section>
+    {% endif %}
+
     {% if records %}
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
