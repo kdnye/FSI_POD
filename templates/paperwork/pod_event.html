@@ -10,13 +10,13 @@
         <input type="hidden" id="latitude" name="latitude">
         <input type="hidden" id="longitude" name="longitude">
 
-        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+        <div class="fsi-form-grid pod-event-fieldset">
             <label>Scan BOL / Reference QR</label>
-            <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto; border: 1px solid var(--color-border);"></div>
+            <div id="qr-reader" class="pod-qr-reader"></div>
             <input type="text" id="reference_id" name="reference_id" class="fsi-input" placeholder="Reference ID (Scanned or Manual)" required>
         </div>
 
-        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+        <div class="fsi-form-grid pod-event-fieldset">
             <label>Event Type</label>
             <select name="event_type" id="event_type" class="fsi-input" required>
                 <option value="PICKUP">Pickup</option>
@@ -24,21 +24,21 @@
             </select>
         </div>
 
-        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+        <div class="fsi-form-grid pod-event-fieldset">
             <label>Capture POD Photo</label>
             <input type="file" id="pod_photo" name="pod_photo" accept="image/*" capture="environment" class="fsi-input" required>
         </div>
 
-        <div class="fsi-form-grid" style="margin-bottom: 1.5rem;">
+        <div class="fsi-form-grid pod-event-fieldset">
             <label>Consignee Signature</label>
-            <div style="border: 1px solid var(--color-border); border-radius: 0.55rem; overflow: hidden; background: #fff;">
+            <div class="pod-signature-shell">
                 <canvas id="signature-pad" width="400" height="200" style="touch-action: none; width: 100%;"></canvas>
             </div>
-            <button type="button" class="fsi-secondary-btn" id="clear-signature" style="margin-top: 0.5rem; width: fit-content;">Clear Signature</button>
+            <button type="button" class="fsi-secondary-btn pod-clear-signature" id="clear-signature">Clear Signature</button>
         </div>
 
         <button class="fsi-primary-btn" id="submitBtn" type="submit">Submit POD Event</button>
-        <div id="statusMessage" style="margin-top: 15px; font-weight: bold;"></div>
+        <div id="statusMessage" class="pod-status-message"></div>
     </form>
 </section>
 
@@ -62,7 +62,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // --- QR Scanner Initialization ---
-    const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+    function getQrConfig() {
+        const viewportWidth = window.innerWidth || 1024;
+        const responsiveBox = Math.max(160, Math.min(220, Math.floor(viewportWidth * 0.42)));
+        return { fps: 10, qrbox: { width: responsiveBox, height: responsiveBox } };
+    }
+
+    const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", getQrConfig(), false);
     html5QrcodeScanner.render((decodedText, decodedResult) => {
         document.getElementById('reference_id').value = decodedText;
         html5QrcodeScanner.clear(); // Stop scanning once found

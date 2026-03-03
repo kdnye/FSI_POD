@@ -8,20 +8,22 @@
         <span id="sync-status" class="fsi-badge-success">Live Syncing...</span>
     </div>
 
-    <table class="fsi-table" style="width: 100%; text-align: left; border-collapse: collapse;">
-        <thead>
-            <tr style="border-bottom: 2px solid var(--color-border);">
-                <th style="padding: 0.75rem;">Batch ID</th>
-                <th style="padding: 0.75rem;">Reference / BOL</th>
-                <th style="padding: 0.75rem;">Consignee</th>
-                <th style="padding: 0.75rem;">Status</th>
-                <th style="padding: 0.75rem;">Last Updated</th>
-            </tr>
-        </thead>
-        <tbody id="dashboard-body">
-            <tr><td colspan="5" style="padding: 1rem; text-align: center;">Loading live data...</td></tr>
-        </tbody>
-    </table>
+    <div class="fsi-table-wrap">
+        <table class="fsi-table">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--color-border);">
+                    <th>Batch ID</th>
+                    <th>Reference / BOL</th>
+                    <th>Consignee</th>
+                    <th>Status</th>
+                    <th>Last Updated</th>
+                </tr>
+            </thead>
+            <tbody id="dashboard-body">
+                <tr><td colspan="5" style="padding: 1rem; text-align: center;">Loading live data...</td></tr>
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <script>
@@ -52,11 +54,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 const tr = document.createElement("tr");
                 tr.style.borderBottom = "1px solid var(--color-border)";
                 tr.innerHTML = `
-                    <td style="padding: 0.75rem;">${row.batch_id}</td>
-                    <td style="padding: 0.75rem; font-family: monospace;">${row.reference_id}</td>
-                    <td style="padding: 0.75rem;">${row.consignee}<br><small style="color: gray;">${row.address}</small></td>
-                    <td style="padding: 0.75rem;">${getStatusBadge(row.status)}</td>
-                    <td style="padding: 0.75rem;">${row.last_updated}</td>
+                    <td>${row.batch_id}</td>
+                    <td style="font-family: monospace;">${row.reference_id}</td>
+                    <td>${row.consignee}<br><small style="color: gray;">${row.address}</small></td>
+                    <td>${getStatusBadge(row.status)}</td>
+                    <td>${row.last_updated}</td>
                 `;
                 tbody.appendChild(tr);
             });
