@@ -5,6 +5,44 @@ from datetime import datetime
 
 class CouchdropService:
     @staticmethod
+    def _ensure_path_exists(token, folder_path, timeout_seconds=15):
+        headers = {"token": token}
+        normalized_path = (folder_path or "").strip("/")
+        if not normalized_path:
+            return True
+
+        cumulative_path = ""
+        for segment in normalized_path.split("/"):
+            cumulative_path = f"{cumulative_path}/{segment}"
+
+            check_response = requests.get(
+                "https://api.couchdrop.io/manage/fileprops",
+                headers=headers,
+                params={"path": cumulative_path},
+                timeout=timeout_seconds,
+            )
+            if check_response.status_code == 200:
+                continue
+
+            mkdir_response = requests.post(
+                "https://fileio.couchdrop.io/file/mkdir",
+                headers=headers,
+                params={"path": cumulative_path},
+                timeout=timeout_seconds,
+            )
+            if mkdir_response.status_code not in (200, 201):
+                logging.error(
+                    "Couchdrop mkdir failed for %s [check=%s, mkdir=%s]: %s",
+                    cumulative_path,
+                    check_response.status_code,
+                    mkdir_response.status_code,
+                    mkdir_response.text,
+                )
+                return False
+
+        return True
+
+    @staticmethod
     def upload_driver_paperwork(user, file_storage):
         timeout_seconds = 15
         raw_token = os.getenv("COUCHDROP_TOKEN")
@@ -24,6 +62,10 @@ class CouchdropService:
             "token": token,
             "Content-Type": "application/octet-stream"
         }
+
+        if not CouchdropService._ensure_path_exists(token, folder_path, timeout_seconds):
+            logging.error("Couchdrop upload aborted: unable to ensure folder path %s", folder_path)
+            return False
         
         # Rewind the stream before reading so uploads are not empty on retries.
         stream = getattr(file_storage, "stream", None)
@@ -39,8 +81,6 @@ class CouchdropService:
             return False
         
         try:
-            # 2. Optimistic Upload: Try to upload directly.
-            # If the folder already exists (e.g. from File #1 in the batch), Files 2, 3, and 4 succeed instantly.
             response = requests.post(
                 "https://fileio.couchdrop.io/file/upload",
                 headers=headers,
@@ -48,51 +88,6 @@ class CouchdropService:
                 data=file_bytes,
                 timeout=timeout_seconds,
             )
-            
-            # 3. If it fails because the folders don't exist, we precisely build them
-            if response.status_code == 404 and "parent-folder-not-found" in response.text:
-                logging.info(f"Folders missing. Building path for: {folder_path}")
-                
-                driver_dir = f"/Paperwork/{driver_name}"
-                
-                # Check if the Driver's folder exists using Couchdrop's management API
-                check_driver = requests.get(
-                    "https://api.couchdrop.io/manage/fileprops", 
-                    headers={"token": token}, 
-                    params={"path": driver_dir},
-                    timeout=timeout_seconds,
-                )
-                if check_driver.status_code != 200:
-                    requests.post(
-                        "https://fileio.couchdrop.io/file/mkdir", 
-                        headers={"token": token}, 
-                        params={"path": driver_dir},
-                        timeout=timeout_seconds,
-                    )
-                    
-                # Check if the Date folder exists
-                check_date = requests.get(
-                    "https://api.couchdrop.io/manage/fileprops", 
-                    headers={"token": token}, 
-                    params={"path": folder_path},
-                    timeout=timeout_seconds,
-                )
-                if check_date.status_code != 200:
-                    requests.post(
-                        "https://fileio.couchdrop.io/file/mkdir", 
-                        headers={"token": token}, 
-                        params={"path": folder_path},
-                        timeout=timeout_seconds,
-                    )
-                    
-                # 4. Retry the exact same upload now that the path is guaranteed to exist
-                response = requests.post(
-                    "https://fileio.couchdrop.io/file/upload",
-                    headers=headers,
-                    params={"path": remote_path},
-                    data=file_bytes,
-                    timeout=timeout_seconds,
-                )
             
             if response.status_code not in (200, 201):
                 logging.error(f"Couchdrop Upload Failed [{response.status_code}]: {response.text}")
