@@ -26,6 +26,9 @@
                 <th align="left">Contact</th>
                 <th align="left">Phone</th>
                 <th align="left">Status</th>
+                <th align="left">POD Photo</th>
+                <th align="left">POD Signature</th>
+                <th align="left">Printed Name</th>
             </tr>
         </thead>
         <tbody>
@@ -37,6 +40,21 @@
                 <td>{{ load.contact_name }}</td>
                 <td>{{ load.phone }}</td>
                 <td>{{ load.status }}</td>
+                <td>
+                    {% if load.pod_delivery_photo %}
+                    <a href="{{ load.pod_delivery_photo }}" target="_blank" rel="noopener noreferrer">View photo</a>
+                    {% else %}
+                    <span aria-hidden="true">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if load.pod_signature_image %}
+                    <a href="{{ load.pod_signature_image }}" target="_blank" rel="noopener noreferrer">View signature</a>
+                    {% else %}
+                    <span aria-hidden="true">—</span>
+                    {% endif %}
+                </td>
+                <td>{{ load.pod_recipient_name or '—' }}</td>
             </tr>
             {% endfor %}
         </tbody>

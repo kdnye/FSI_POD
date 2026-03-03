@@ -207,6 +207,80 @@ def test_ops_user_sees_full_active_load_board(client):
     assert "HWB-OPS-2" in body
     assert "Ops/Admin CSV Upload" in body
 
+def test_active_load_board_shows_pod_details_only_for_delivered_loads(client):
+    driver_id = _create_user("driver-pod-details@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-POD-DETAIL",
+            shipper="Acme",
+            consignee="Receiver",
+            contact_name="Contact",
+            phone="555-7777",
+            assigned_driver=driver_id,
+            status="Delivered",
+        )
+    )
+    db.session.add(
+        PODRecord(
+            hwb_number="HWB-POD-DETAIL",
+            delivery_photo="https://example.com/photo.png",
+            signature_image="https://example.com/signature.png",
+            recipient_name="Printed Receiver",
+            timestamp=datetime(2024, 1, 15, 12, 0, tzinfo=timezone.utc),
+            driver_id=driver_id,
+            action_type="Delivery",
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/load-board")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "View photo" in body
+    assert "View signature" in body
+    assert "Printed Receiver" in body
+
+
+def test_active_load_board_hides_pod_details_until_completed(client):
+    driver_id = _create_user("driver-pod-pending@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-POD-HIDDEN",
+            shipper="Acme",
+            consignee="Receiver",
+            contact_name="Contact",
+            phone="555-8888",
+            assigned_driver=driver_id,
+            status="Pending",
+        )
+    )
+    db.session.add(
+        PODRecord(
+            hwb_number="HWB-POD-HIDDEN",
+            delivery_photo="https://example.com/photo-hidden.png",
+            signature_image="https://example.com/signature-hidden.png",
+            recipient_name="Should Stay Hidden",
+            timestamp=datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc),
+            driver_id=driver_id,
+            action_type="Delivery",
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/load-board")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Should Stay Hidden" not in body
+    assert "photo-hidden.png" not in body
+    assert "signature-hidden.png" not in body
+
+
 def test_admin_can_export_full_and_ranged_pod_history_csv(client):
     admin_id = _create_user("admin-export@example.com", role=Role.ADMIN)
     _login(client, admin_id)
