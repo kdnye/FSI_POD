@@ -262,16 +262,17 @@ def scan_hwb():
 @require_employee_approval()
 def active_load_board():
     ensure_hybrid_pod_tables()
-    loads = (
-        LoadBoard.query.filter_by(assigned_driver=g.current_user.id)
-        .order_by(LoadBoard.hwb_number.asc())
-        .all()
-    )
+    full_board_access = is_ops_or_admin_user()
+    load_query = LoadBoard.query
+    if not full_board_access:
+        load_query = load_query.filter_by(assigned_driver=g.current_user.id)
+
+    loads = load_query.order_by(LoadBoard.hwb_number.asc()).all()
     return render_template(
         "paperwork/load_board.html",
         title="Active Load Board",
         loads=loads,
-        is_admin=is_ops_or_admin_user(),
+        full_board_access=full_board_access,
     )
 
 

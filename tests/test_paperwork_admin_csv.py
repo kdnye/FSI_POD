@@ -89,6 +89,124 @@ def test_non_admin_cannot_upload_load_board_csv(client):
     assert db.session.get(LoadBoard, "HWB-101") is None
 
 
+
+
+def test_ops_can_upload_load_board_csv(client):
+    ops_user = User(
+        email="ops-loads@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+        is_ops=True,
+    )
+    db.session.add(ops_user)
+    db.session.commit()
+    _login(client, ops_user.id)
+
+    csv_payload = (
+        "hwb_number,shipper,consignee,contact_name,phone,assigned_driver,status\n"
+        "HWB-103,Acme,Receiver Four,Casey Doe,555-0005,1,Pending\n"
+    )
+
+    response = client.post(
+        "/load-board/upload-csv",
+        data={"load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    entry = db.session.get(LoadBoard, "HWB-103")
+    assert entry is not None
+    assert entry.shipper == "Acme"
+
+
+def test_non_ops_user_sees_my_active_loads_only(client):
+    driver_id = _create_user("driver-board@example.com", role=Role.EMPLOYEE)
+    other_driver_id = _create_user("other-driver-board@example.com", role=Role.EMPLOYEE)
+    _login(client, driver_id)
+
+    db.session.add_all(
+        [
+            LoadBoard(
+                hwb_number="HWB-ME",
+                shipper="Acme",
+                consignee="Receiver Me",
+                contact_name="Driver One",
+                phone="555-1000",
+                assigned_driver=driver_id,
+                status="Pending",
+            ),
+            LoadBoard(
+                hwb_number="HWB-NOT-ME",
+                shipper="Acme",
+                consignee="Receiver Other",
+                contact_name="Driver Two",
+                phone="555-2000",
+                assigned_driver=other_driver_id,
+                status="Pending",
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = client.get("/load-board")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "My Active Loads" in body
+    assert "HWB-ME" in body
+    assert "HWB-NOT-ME" not in body
+    assert "Ops/Admin CSV Upload" not in body
+
+
+def test_ops_user_sees_full_active_load_board(client):
+    ops_user = User(
+        email="ops-board@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+        is_ops=True,
+    )
+    db.session.add(ops_user)
+    db.session.commit()
+    _login(client, ops_user.id)
+
+    db.session.add_all(
+        [
+            LoadBoard(
+                hwb_number="HWB-OPS-1",
+                shipper="Acme",
+                consignee="Receiver One",
+                contact_name="Contact One",
+                phone="555-3000",
+                assigned_driver=ops_user.id,
+                status="Pending",
+            ),
+            LoadBoard(
+                hwb_number="HWB-OPS-2",
+                shipper="Acme",
+                consignee="Receiver Two",
+                contact_name="Contact Two",
+                phone="555-4000",
+                assigned_driver=999,
+                status="Pending",
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = client.get("/load-board")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Active Load Board" in body
+    assert "HWB-OPS-1" in body
+    assert "HWB-OPS-2" in body
+    assert "Ops/Admin CSV Upload" in body
+
 def test_admin_can_export_full_and_ranged_pod_history_csv(client):
     admin_id = _create_user("admin-export@example.com", role=Role.ADMIN)
     _login(client, admin_id)

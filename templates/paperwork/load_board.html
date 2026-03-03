@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Active Load Board | FSI{% endblock %}
+{% block title %}{{ "Active Load Board" if full_board_access else "My Active Loads" }} | FSI{% endblock %}
 
 {% block content %}
 <section class="fsi-card">
-    <h1 class="fsi-display">Active Load Board</h1>
+    <h1 class="fsi-display">{{ "Active Load Board" if full_board_access else "My Active Loads" }}</h1>
 
-    {% if is_admin %}
+    {% if full_board_access %}
     <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
-        <h2 style="margin-top: 0;">Admin CSV Upload</h2>
+        <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
         <p style="margin-top: 0;">Upload a CSV with headers: <code>hwb_number, shipper, consignee, contact_name, phone, assigned_driver, status</code>.</p>
         <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
             <input type="file" name="load_board_csv" accept=".csv" required>
@@ -42,7 +42,7 @@
         </tbody>
     </table>
     {% else %}
-    <p>No active loads assigned to you.</p>
+    <p>{{ "No active loads found." if full_board_access else "No active loads assigned to you." }}</p>
     {% endif %}
 </section>
 {% endblock %}
