@@ -20,14 +20,17 @@ steps:
       - run
       - deploy
       - ${_SERVICE_NAME}
-      - --project=${PROJECT_ID}
+      - --project=quote-tool-483716
       - --region=${_REGION}
       - --platform=managed
       - --image=${_IMAGE}
       - --allow-unauthenticated
+      - --execution-environment=gen2
+      - --add-volume=name=fsi-pod-storage,type=cloud-storage,bucket=fsi_pod
+      - --add-volume-mount=volume=fsi-pod-storage,mount-path=/POD
       - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
       - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod
-      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,COUCHDROP_TOKEN=COUCHDROP_TOKEN:latest
+      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest
 
 images:
   - ${_IMAGE}
