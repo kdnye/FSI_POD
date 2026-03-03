@@ -8,6 +8,34 @@ from werkzeug.datastructures import FileStorage
 
 class GCSService:
     @staticmethod
+    def _ensure_couchdrop_path_exists(token: str, folder_path: str) -> None:
+        """Create Couchdrop folders on-demand to avoid partial/empty uploads."""
+        if not folder_path or folder_path == "/":
+            return
+
+        headers = {"token": token.strip()}
+        current = ""
+        for segment in [part for part in folder_path.split("/") if part]:
+            current = f"{current}/{segment}"
+            check_response = requests.get(
+                "https://api.couchdrop.io/manage/fileprops",
+                headers=headers,
+                params={"path": current},
+                timeout=15,
+            )
+            if check_response.status_code == 200:
+                continue
+
+            mkdir_response = requests.post(
+                "https://fileio.couchdrop.io/file/mkdir",
+                headers=headers,
+                params={"path": current},
+                timeout=15,
+            )
+            if mkdir_response.status_code not in (200, 201):
+                raise ValueError(f"Unable to create destination folder: {current}")
+
+    @staticmethod
     def upload_file(file_obj: FileStorage, folder: str = "pod_events") -> str | None:
         """
         Uploads a Werkzeug FileStorage object to Couchdrop.
@@ -31,13 +59,19 @@ class GCSService:
         # Always reset the in-memory stream before reading. This prevents
         # zero-byte uploads when the same FileStorage object has already been
         # accessed earlier in the request lifecycle.
-        file_obj.seek(0)
-        file_bytes = file_obj.read()
+        if hasattr(file_obj, "stream") and hasattr(file_obj.stream, "seek"):
+            file_obj.stream.seek(0)
+        else:
+            file_obj.seek(0)
+
+        file_bytes = file_obj.stream.read() if hasattr(file_obj, "stream") else file_obj.read()
         if not file_bytes:
             logging.error("Couchdrop Upload Aborted: empty file stream for %s", file_obj.filename)
             return None
 
         try:
+            GCSService._ensure_couchdrop_path_exists(token, os.path.dirname(destination_path))
+
             response = requests.post(
                 "https://fileio.couchdrop.io/file/upload",
                 headers=headers,
