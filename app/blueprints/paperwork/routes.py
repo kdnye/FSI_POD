@@ -1,7 +1,10 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, current_app
+from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, current_app, Response
+import csv
 import base64
 import uuid
-from io import BytesIO
+from io import BytesIO, StringIO
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from werkzeug.datastructures import FileStorage
 from sqlalchemy import inspect
 
@@ -15,6 +18,59 @@ from models import ExpectedDelivery
 from models import LoadBoard, PODRecord
 
 paperwork_bp = Blueprint("paperwork", __name__)
+ARIZONA_TZ = ZoneInfo("America/Phoenix")
+
+
+def current_user_role() -> str:
+    role = getattr(g.current_user, "role", None)
+    return getattr(role, "value", role)
+
+
+def require_admin_or_redirect(redirect_endpoint: str):
+    if current_user_role() != "ADMIN":
+        flash("Admin access is required.")
+        return redirect(url_for(redirect_endpoint))
+    return None
+
+
+def parse_iso_datetime(value: str) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def pod_history_csv_response(records, filename: str) -> Response:
+    csv_buffer = StringIO()
+    writer = csv.writer(csv_buffer)
+
+    writer.writerow(["id", "hwb_number", "action_type", "recipient_name", "shipper", "consignee", "contact_name", "phone", "driver_id", "timestamp_utc", "timestamp_az"])
+    for record in records:
+        timestamp_utc = record.timestamp.astimezone(timezone.utc) if record.timestamp else None
+        timestamp_az = record.timestamp.astimezone(ARIZONA_TZ) if record.timestamp else None
+        writer.writerow([
+            record.id,
+            record.hwb_number or "",
+            record.action_type,
+            record.recipient_name,
+            record.shipper or "",
+            record.consignee or "",
+            record.contact_name or "",
+            record.phone or "",
+            record.driver_id,
+            timestamp_utc.isoformat() if timestamp_utc else "",
+            timestamp_az.isoformat() if timestamp_az else "",
+        ])
+
+    return Response(
+        csv_buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def ensure_hybrid_pod_tables() -> None:
@@ -192,7 +248,74 @@ def active_load_board():
         .order_by(LoadBoard.hwb_number.asc())
         .all()
     )
-    return render_template("paperwork/load_board.html", title="Active Load Board", loads=loads)
+    return render_template(
+        "paperwork/load_board.html",
+        title="Active Load Board",
+        loads=loads,
+        is_admin=current_user_role() == "ADMIN",
+    )
+
+
+@paperwork_bp.post("/load-board/upload-csv")
+@require_employee_approval()
+def upload_load_board_csv():
+    ensure_hybrid_pod_tables()
+    unauthorized = require_admin_or_redirect("paperwork.active_load_board")
+    if unauthorized:
+        return unauthorized
+
+    csv_file = request.files.get("load_board_csv")
+    if not csv_file or not csv_file.filename:
+        flash("Please choose a CSV file to upload.")
+        return redirect(url_for("paperwork.active_load_board"))
+
+    try:
+        csv_file.seek(0)
+        decoded = csv_file.read().decode("utf-8-sig")
+        rows = list(csv.DictReader(decoded.splitlines()))
+    except Exception:
+        flash("Unable to read the CSV file.")
+        return redirect(url_for("paperwork.active_load_board"))
+
+    required_fields = {"hwb_number", "shipper", "consignee", "contact_name", "phone", "assigned_driver"}
+    if not rows or not required_fields.issubset(set(rows[0].keys())):
+        flash("CSV is missing required headers: hwb_number, shipper, consignee, contact_name, phone, assigned_driver.")
+        return redirect(url_for("paperwork.active_load_board"))
+
+    upserted_count = 0
+    for row in rows:
+        hwb_number = (row.get("hwb_number") or "").strip()
+        shipper = (row.get("shipper") or "").strip()
+        consignee = (row.get("consignee") or "").strip()
+        contact_name = (row.get("contact_name") or "").strip()
+        phone = (row.get("phone") or "").strip()
+        assigned_driver_raw = (row.get("assigned_driver") or "").strip()
+        status = (row.get("status") or "Pending").strip() or "Pending"
+
+        if not all([hwb_number, shipper, consignee, contact_name, phone, assigned_driver_raw]):
+            continue
+
+        try:
+            assigned_driver = int(assigned_driver_raw)
+        except ValueError:
+            continue
+
+        entry = db.session.get(LoadBoard, hwb_number)
+        if not entry:
+            entry = LoadBoard(hwb_number=hwb_number)
+            db.session.add(entry)
+
+        entry.shipper = shipper
+        entry.consignee = consignee
+        entry.contact_name = contact_name
+        entry.phone = phone
+        entry.assigned_driver = assigned_driver
+        entry.status = status
+        upserted_count += 1
+
+    db.session.commit()
+    flash(f"Load board CSV processed. {upserted_count} rows applied.")
+    return redirect(url_for("paperwork.active_load_board"))
 
 
 @paperwork_bp.get("/pod/history")
@@ -205,7 +328,43 @@ def pod_history():
         .limit(100)
         .all()
     )
-    return render_template("paperwork/pod_history.html", title="POD History", records=records)
+    return render_template(
+        "paperwork/pod_history.html",
+        title="POD History",
+        records=records,
+        is_admin=current_user_role() == "ADMIN",
+    )
+
+
+@paperwork_bp.get("/pod/history/export")
+@require_employee_approval()
+def pod_history_export():
+    ensure_hybrid_pod_tables()
+    unauthorized = require_admin_or_redirect("paperwork.pod_history")
+    if unauthorized:
+        return unauthorized
+
+    start_dt_raw = request.args.get("start")
+    end_dt_raw = request.args.get("end")
+
+    query = PODRecord.query.order_by(PODRecord.timestamp.desc())
+    try:
+        start_dt = parse_iso_datetime(start_dt_raw) if start_dt_raw else None
+        end_dt = parse_iso_datetime(end_dt_raw) if end_dt_raw else None
+    except ValueError:
+        flash("Invalid date format. Use ISO date values.")
+        return redirect(url_for("paperwork.pod_history"))
+
+    if start_dt:
+        query = query.filter(PODRecord.timestamp >= start_dt)
+    if end_dt:
+        query = query.filter(PODRecord.timestamp <= end_dt)
+
+    filename = "pod_history_full.csv"
+    if start_dt or end_dt:
+        filename = "pod_history_ranged.csv"
+
+    return pod_history_csv_response(query.all(), filename)
 
 # --- 2. EXISTING: Batch Upload Route ---
 @paperwork_bp.route("/upload", methods=["GET", "POST"])
@@ -252,7 +411,7 @@ def history():
 @require_employee_approval()
 def ops_dashboard():
     # Only allow Admin or Supervisor to view the ops dashboard (optional RBAC)
-    if g.current_user.role.value not in ["ADMIN", "SUPERVISOR"]:
+    if current_user_role() not in ["ADMIN", "SUPERVISOR"]:
         flash("Unauthorized access.")
         return redirect(url_for("paperwork.history"))
         
