@@ -133,6 +133,10 @@ def submit_pod(
     """Persist POD data in hybrid mode and keep legacy POD event logging."""
     if action_type not in {"Pickup", "Delivery"}:
         raise ValueError("Invalid action type.")
+    if not pod_photo or not getattr(pod_photo, "filename", ""):
+        raise ValueError("POD photo is required.")
+    if not signature_file:
+        raise ValueError("Signature image is required.")
 
     load_board_entry = db.session.get(LoadBoard, hwb_number)
     user_has_full_board_rights = is_ops_or_admin_user()
@@ -144,6 +148,8 @@ def submit_pod(
 
     photo_uri = GCSService.upload_file(pod_photo, folder=f"pod_photos/{action_type.lower()}")
     sig_uri = GCSService.upload_file(signature_file, folder=f"signatures/{action_type.lower()}")
+    if not photo_uri or not sig_uri:
+        raise ValueError("Failed to upload POD assets.")
 
     persisted_reassignment_note = None
     if is_off_sheet and off_sheet_confirmed:
