@@ -252,6 +252,10 @@ def log_pod_event():
                 filename=f"signature_{uuid.uuid4().hex[:8]}.png",
                 content_type="image/png"
             )
+            # Ensure stream starts at byte 0 to prevent accidental 0-byte uploads after intermediate handling.
+            if not getattr(signature_file, "stream", None) or not hasattr(signature_file.stream, "seek"):
+                raise ValueError("Signature stream is not seekable.")
+            signature_file.stream.seek(0)
         except Exception as e:
             if is_ajax: return jsonify({"error": "Failed to decode signature"}), 400
             flash("Failed to process signature.")
