@@ -46,8 +46,30 @@ def test_get_runtime_config_defaults_for_local(monkeypatch):
     assert runtime_config["SECRET_KEY"] == "dev-only-change-me"
     assert runtime_config["SQLALCHEMY_DATABASE_URI"] == "postgresql+psycopg://localhost/fsi_app"
     assert runtime_config["DEBUG"] is False
+    assert runtime_config["MAX_CONTENT_LENGTH"] == 16 * 1024 * 1024
     assert runtime_config["SESSION_COOKIE_SECURE"] is False
     assert runtime_config["REMEMBER_COOKIE_SECURE"] is False
+
+
+def test_get_runtime_config_allows_max_content_length_override(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "prod-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
+    monkeypatch.setenv("MAX_CONTENT_LENGTH_MB", "32")
+
+    runtime_config = config.get_runtime_config()
+
+    assert runtime_config["MAX_CONTENT_LENGTH"] == 32 * 1024 * 1024
+
+
+def test_get_runtime_config_rejects_invalid_max_content_length_override(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "prod-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
+    monkeypatch.setenv("MAX_CONTENT_LENGTH_MB", "abc")
+
+    with pytest.raises(RuntimeError, match="MAX_CONTENT_LENGTH_MB must be a whole number"):
+        config.get_runtime_config()
 
 
 def test_get_runtime_config_production_requires_secret_values(monkeypatch):
