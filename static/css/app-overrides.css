@@ -188,6 +188,35 @@
   padding: 0.75rem;
 }
 
+.fsi-load-board-wrap {
+  max-height: min(68vh, 820px);
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.fsi-load-board-table {
+  min-width: 1460px;
+}
+
+.fsi-load-board-table th,
+.fsi-load-board-table td {
+  padding: 0.95rem 1.1rem;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.fsi-load-board-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface, #ffffff);
+}
+
+.fsi-load-board-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-border) 24%, transparent);
+}
+
 .pod-event-fieldset {
   margin-bottom: 1.5rem;
 }
