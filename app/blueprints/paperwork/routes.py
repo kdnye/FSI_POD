@@ -323,6 +323,31 @@ def active_load_board():
         load_query = load_query.filter_by(assigned_driver=g.current_user.id)
 
     loads = load_query.order_by(LoadBoard.hwb_number.asc()).all()
+
+    latest_delivery_by_hwb: dict[str, PODRecord] = {}
+    load_hwbs = [load.hwb_number for load in loads if load.hwb_number]
+    if load_hwbs:
+        pod_records = (
+            PODRecord.query
+            .filter(PODRecord.hwb_number.in_(load_hwbs), PODRecord.action_type == "Delivery")
+            .order_by(PODRecord.id.desc())
+            .all()
+        )
+        for pod_record in pod_records:
+            if pod_record.hwb_number and pod_record.hwb_number not in latest_delivery_by_hwb:
+                latest_delivery_by_hwb[pod_record.hwb_number] = pod_record
+
+    for load in loads:
+        pod_record = latest_delivery_by_hwb.get(load.hwb_number)
+        if load.status == "Delivered" and pod_record:
+            load.pod_delivery_photo = pod_record.delivery_photo
+            load.pod_signature_image = pod_record.signature_image
+            load.pod_recipient_name = pod_record.recipient_name
+        else:
+            load.pod_delivery_photo = None
+            load.pod_signature_image = None
+            load.pod_recipient_name = None
+
     return render_template(
         "paperwork/load_board.html",
         title="Active Load Board",
