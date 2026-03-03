@@ -10,6 +10,7 @@
         <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
         <p style="margin-top: 0;">Upload a CSV with headers: <code>hwb_number, shipper, consignee, contact_name, phone, assigned_driver, status</code>.</p>
         <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="file" name="load_board_csv" accept=".csv" required>
             <button type="submit">Upload to Load Board</button>
         </form>
