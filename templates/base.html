@@ -17,8 +17,7 @@
     <div class="fsi-container">
       <a class="fsi-brand" href="/">Freight Services Inc.</a>
       <div class="fsi-nav-actions">
-        <a href="{{ url_for('paperwork.active_load_board') }}" class="fsi-secondary-btn" style="text-decoration: none;">Active Load Board</a>
-        <a href="{{ url_for('paperwork.pod_history') }}" class="fsi-secondary-btn" style="text-decoration: none;">POD History</a>
+        <a href="{{ url_for('paperwork.log_pod_event') }}" class="fsi-primary-btn" style="text-decoration: none;">New POD</a>
         <a
           href="https://support.freightservicesinc.com/help"
           aria-label="Help"
@@ -57,6 +56,8 @@
           >
             <li role="none"><a role="menuitem" href="/account/profile" tabindex="-1" data-account-menu-item>Profile</a></li>
             <li role="none"><a role="menuitem" href="/account/settings" tabindex="-1" data-account-menu-item>Settings</a></li>
+            <li role="none"><a role="menuitem" href="{{ url_for('paperwork.active_load_board') }}" tabindex="-1" data-account-menu-item>Active Load Board</a></li>
+            <li role="none"><a role="menuitem" href="{{ url_for('paperwork.pod_history') }}" tabindex="-1" data-account-menu-item>POD History</a></li>
             {% if g.current_user and g.current_user.role in ['ADMIN', 'ADMINISTRATOR'] %}
             <li role="none"><a role="menuitem" href="/account/admin/users" tabindex="-1" data-account-menu-item>Admin Dashboard</a></li>
             {% endif %}

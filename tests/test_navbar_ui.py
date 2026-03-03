@@ -16,6 +16,8 @@ def test_help_link_points_to_approved_external_support():
 def test_account_dropdown_contains_expected_menu_items():
     template = (_repo_root() / "templates" / "base.html").read_text()
 
+    assert "New POD" in template
+    assert "paperwork.log_pod_event" in template
     assert "Active Load Board" in template
     assert "POD History" in template
     assert 'data-account-menu-toggle' in template
