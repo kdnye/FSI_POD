@@ -23,6 +23,7 @@ DEBUG=true
 SECRET_KEY=dev-only-change-me
 DATABASE_URL=postgresql+psycopg://localhost/fsi_app
 PORT=8080
+MAX_CONTENT_LENGTH_MB=16
 ```
 
 Run locally with Flask's dev server:
@@ -69,6 +70,7 @@ These values are read by `app/config.py`.
 | `DEBUG` | No | Keep `false` in production. | Cloud Run env var |
 | `SESSION_COOKIE_SECURE` | No | Defaults to `true` when production mode is enabled. | Optional env var |
 | `REMEMBER_COOKIE_SECURE` | No | Defaults to `true` when production mode is enabled. | Optional env var |
+| `MAX_CONTENT_LENGTH_MB` | No | Global request body cap in MB (default `16`, resulting in `MAX_CONTENT_LENGTH=16*1024*1024`). | Optional env var |
 
 ## Secret Manager Names
 `cloudbuild.yaml` expects these secret names by default:
