@@ -38,9 +38,16 @@ def is_admin_user() -> bool:
         return False
 
 
+def is_ops_or_admin_user() -> bool:
+    if is_admin_user():
+        return True
+
+    return bool(getattr(g.current_user, "is_ops", False))
+
+
 def require_admin_or_redirect(redirect_endpoint: str):
-    if not is_admin_user():
-        flash("Admin access is required.")
+    if not is_ops_or_admin_user():
+        flash("Ops or admin access is required.")
         return redirect(url_for(redirect_endpoint))
     return None
 
@@ -264,7 +271,7 @@ def active_load_board():
         "paperwork/load_board.html",
         title="Active Load Board",
         loads=loads,
-        is_admin=is_admin_user(),
+        is_admin=is_ops_or_admin_user(),
     )
 
 
@@ -344,7 +351,7 @@ def pod_history():
         "paperwork/pod_history.html",
         title="POD History",
         records=records,
-        is_admin=is_admin_user(),
+        is_admin=is_ops_or_admin_user(),
     )
 
 
@@ -422,8 +429,8 @@ def history():
 @paperwork_bp.route("/ops/dashboard")
 @require_employee_approval()
 def ops_dashboard():
-    # Only allow Admin or Supervisor to view the ops dashboard (optional RBAC)
-    if current_user_role() not in [Role.ADMIN.value, Role.ADMINISTRATOR.value, Role.SUPERVISOR.value]:
+    # Only allow users designated for ops or admins to view dashboard.
+    if not is_ops_or_admin_user():
         flash("Unauthorized access.")
         return redirect(url_for("paperwork.history"))
         

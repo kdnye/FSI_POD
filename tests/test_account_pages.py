@@ -73,6 +73,7 @@ def test_admin_can_update_user_permissions(client):
         password_hash="pbkdf2:sha256:1$dummy$dummy",
         role=Role.EMPLOYEE.value,
         employee_approved=False,
+        is_ops=False,
         is_active=True,
     )
     db.session.add(target_user)
@@ -85,6 +86,7 @@ def test_admin_can_update_user_permissions(client):
             "role": Role.SUPERVISOR.value,
             "employee_approved": "on",
             "is_active": "on",
+            "is_ops": "on",
         },
         follow_redirects=False,
     )
@@ -96,3 +98,4 @@ def test_admin_can_update_user_permissions(client):
     assert target_user.role == Role.SUPERVISOR.value
     assert target_user.employee_approved is True
     assert target_user.is_active is True
+    assert target_user.is_ops is True

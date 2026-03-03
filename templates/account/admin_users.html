@@ -15,6 +15,7 @@
         <th>Role</th>
         <th>Approved</th>
         <th>Active</th>
+        <th>Ops</th>
         <th>Save</th>
       </tr>
     </thead>
@@ -46,6 +47,9 @@
             {% if user.id == g.current_user.id %}
               <input type="hidden" name="is_active" value="on">
             {% endif %}
+          </td>
+          <td>
+            <input type="checkbox" name="is_ops" {% if user.is_ops %}checked{% endif %}>
           </td>
           <td><button type="submit" class="fsi-primary-btn">Update</button></td>
         </form>
