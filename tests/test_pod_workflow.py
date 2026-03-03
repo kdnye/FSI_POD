@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import pytest
+from flask import Response
 from sqlalchemy import inspect, text
 
 from app import db
@@ -169,6 +170,28 @@ def test_pod_history_includes_links_to_photo_and_signature(client):
     assert response.status_code == 200
     assert b'href="https://storage.googleapis.com/bucket/pod.jpg"' in response.data
     assert b'href="https://storage.googleapis.com/bucket/signature.png"' in response.data
+
+
+def test_pod_asset_route_serves_files_from_mount(client, monkeypatch):
+    driver_id = _create_user("pod-asset-route@example.com")
+    _login(client, driver_id)
+
+    captured = {}
+
+    def _fake_send_from_directory(directory, filename):
+        captured["directory"] = directory
+        captured["filename"] = filename
+        return Response("ok", mimetype="text/plain")
+
+    monkeypatch.setattr("app.blueprints.paperwork.routes.send_from_directory", _fake_send_from_directory)
+
+    response = client.get("/POD/pod_photos/delivery/example.png")
+
+    assert response.status_code == 200
+    assert captured == {
+        "directory": "/POD",
+        "filename": "pod_photos/delivery/example.png",
+    }
 
 
 def test_shipping_reconciliation_view_classifies_manual_vs_system_match_when_available(app):

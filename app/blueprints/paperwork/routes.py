@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, current_app, Response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, current_app, Response, send_from_directory
 import csv
 import base64
 import uuid
@@ -495,6 +495,12 @@ def pod_history_export():
         filename = "pod_history_ranged.csv"
 
     return pod_history_csv_response(query.all(), filename)
+
+
+@paperwork_bp.get("/POD/<path:filename>")
+@require_employee_approval()
+def serve_pod_file(filename: str):
+    return send_from_directory("/POD", filename)
 
 # --- 2. EXISTING: Batch Upload Route ---
 @paperwork_bp.route("/upload", methods=["GET", "POST"])
