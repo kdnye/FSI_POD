@@ -51,28 +51,22 @@ class GCSService:
         ext = file_obj.filename.split(".")[-1] if file_obj.filename and "." in file_obj.filename else "png"
         destination_path = f"/POD/{folder}/{uuid.uuid4().hex}.{ext}"
 
-        headers = {
-            "token": token.strip(),
-            "Content-Type": "application/octet-stream",
-        }
-
-        # Always reset the in-memory stream before reading. This prevents
-        # zero-byte uploads when the same FileStorage object has already been
-        # accessed earlier in the request lifecycle.
-        if hasattr(file_obj, "stream") and hasattr(file_obj.stream, "seek"):
-            file_obj.stream.seek(0)
-        else:
-            file_obj.seek(0)
-
-        file_bytes = file_obj.stream.read() if hasattr(file_obj, "stream") else file_obj.read()
+        file_obj.seek(0)
+        file_bytes = file_obj.read()
         if not file_bytes:
             logging.error("Couchdrop Upload Aborted: empty file stream for %s", file_obj.filename)
             return None
 
+        headers = {
+            "token": token.strip(),
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(len(file_bytes)),
+        }
+
         try:
             GCSService._ensure_couchdrop_path_exists(token, os.path.dirname(destination_path))
 
-            response = requests.post(
+            response = requests.put(
                 "https://fileio.couchdrop.io/file/upload",
                 headers=headers,
                 params={"path": destination_path},
