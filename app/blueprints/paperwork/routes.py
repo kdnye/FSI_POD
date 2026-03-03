@@ -123,6 +123,10 @@ def submit_pod(
     signature_file,
     latitude: str | None,
     longitude: str | None,
+    shipper: str | None,
+    consignee: str | None,
+    contact_name: str | None,
+    phone: str | None,
     off_sheet_confirmed: bool,
     reassignment_note: str | None,
 ) -> None:
@@ -163,11 +167,18 @@ def submit_pod(
     )
 
     if load_board_entry:
+        # Path A: system match
         pod_record.shipper = load_board_entry.shipper
         pod_record.consignee = load_board_entry.consignee
         pod_record.contact_name = load_board_entry.contact_name
         pod_record.phone = load_board_entry.phone
         load_board_entry.status = "Picked Up" if action_type == "Pickup" else "Delivered"
+    else:
+        # Path B: manual POD
+        pod_record.shipper = shipper
+        pod_record.consignee = consignee
+        pod_record.contact_name = contact_name
+        pod_record.phone = phone
 
     db.session.add(pod_record)
 
@@ -197,6 +208,10 @@ def log_pod_event():
     hwb_number = (request.form.get("hwb_number") or "").strip()
     action_type = request.form.get("action_type")
     recipient_name = (request.form.get("recipient_name") or "").strip()
+    shipper = (request.form.get("shipper") or "").strip() or None
+    consignee = (request.form.get("consignee") or "").strip() or None
+    contact_name = (request.form.get("contact_name") or "").strip() or None
+    phone = (request.form.get("phone") or "").strip() or None
     lat = request.form.get("latitude")
     lon = request.form.get("longitude")
     off_sheet_confirmed = (request.form.get("off_sheet_confirmed") or "").strip().lower() in {"1", "true", "yes", "on"}
@@ -246,6 +261,10 @@ def log_pod_event():
             signature_file=signature_file,
             latitude=lat,
             longitude=lon,
+            shipper=shipper,
+            consignee=consignee,
+            contact_name=contact_name,
+            phone=phone,
             off_sheet_confirmed=off_sheet_confirmed,
             reassignment_note=reassignment_note,
         )
