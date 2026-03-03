@@ -22,6 +22,7 @@ def test_account_dropdown_contains_expected_menu_items():
     assert 'data-account-menu-list' in template
     assert 'href="/account/profile"' in template
     assert 'href="/account/settings"' in template
+    assert 'href="/account/admin/users"' in template
     assert 'href="/auth/logout"' in template
 
 
