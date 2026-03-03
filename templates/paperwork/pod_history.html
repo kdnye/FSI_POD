@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}POD History | FSI{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+    <h1 class="fsi-display">POD History</h1>
+    {% if records %}
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr>
+                <th align="left">HWB</th>
+                <th align="left">Action</th>
+                <th align="left">Recipient</th>
+                <th align="left">Shipper</th>
+                <th align="left">Consignee</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in records %}
+            <tr>
+                <td>{{ record.hwb_number }}</td>
+                <td>{{ record.action_type }}</td>
+                <td>{{ record.recipient_name }}</td>
+                <td>{{ record.shipper or 'Manual Entry' }}</td>
+                <td>{{ record.consignee or 'Manual Entry' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No POD records found yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

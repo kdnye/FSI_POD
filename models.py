@@ -100,3 +100,34 @@ class ExpectedDelivery(db.Model):
     status = db.Column(db.String(20), default="PENDING") # PENDING, PICKED_UP, DELIVERED
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class LoadBoard(db.Model):
+    __tablename__ = "load_board"
+
+    hwb_number = db.Column(db.String(100), primary_key=True)
+    shipper = db.Column(db.String(150), nullable=False)
+    consignee = db.Column(db.String(150), nullable=False)
+    contact_name = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(40), nullable=False)
+    assigned_driver = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    status = db.Column(db.String(20), nullable=False, default="Pending")
+
+
+class PODRecord(db.Model):
+    __tablename__ = "pod_records"
+
+    id = db.Column(db.Integer, primary_key=True)
+    hwb_number = db.Column(db.String(100), db.ForeignKey("load_board.hwb_number"), index=True, nullable=True)
+    delivery_photo = db.Column(db.String(512), nullable=False)
+    signature_image = db.Column(db.String(512), nullable=False)
+    recipient_name = db.Column(db.String(120), nullable=False)
+    timestamp = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    driver_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    action_type = db.Column(db.String(20), nullable=False)
+
+    # Nullable on purpose to support standalone/manual POD entries.
+    shipper = db.Column(db.String(150), nullable=True)
+    consignee = db.Column(db.String(150), nullable=True)
+    contact_name = db.Column(db.String(120), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
