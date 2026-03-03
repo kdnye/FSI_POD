@@ -99,3 +99,58 @@ def test_admin_can_update_user_permissions(client):
     assert target_user.employee_approved is True
     assert target_user.is_active is True
     assert target_user.is_ops is True
+
+
+def test_admin_can_toggle_ops_membership_off_and_change_persists(client):
+    admin = _create_session_user(client, email="admin-ops-toggle@example.com")
+    admin.role = Role.ADMIN.value
+
+    target_user = User(
+        email="ops-user@example.com",
+        password_hash="pbkdf2:sha256:1$dummy$dummy",
+        role=Role.EMPLOYEE.value,
+        employee_approved=True,
+        is_ops=True,
+        is_active=True,
+    )
+    db.session.add(target_user)
+    db.session.commit()
+
+    response = client.post(
+        "/account/admin/users",
+        data={
+            "user_id": str(target_user.id),
+            "role": Role.EMPLOYEE.value,
+            "employee_approved": "on",
+            "is_active": "on",
+            # Intentionally omit is_ops to uncheck it.
+        },
+        follow_redirects=False,
+    )
+
+    db.session.refresh(target_user)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/account/admin/users")
+    assert target_user.is_ops is False
+
+
+def test_admin_users_table_renders_ops_column_and_checkbox(client):
+    admin = _create_session_user(client, email="admin-ops-column@example.com")
+    admin.role = Role.ADMIN.value
+    target_user = User(
+        email="ops-column-target@example.com",
+        password_hash="pbkdf2:sha256:1$dummy$dummy",
+        role=Role.EMPLOYEE.value,
+        employee_approved=True,
+        is_ops=True,
+        is_active=True,
+    )
+    db.session.add(target_user)
+    db.session.commit()
+
+    response = client.get("/account/admin/users")
+
+    assert response.status_code == 200
+    assert b"<th>Ops</th>" in response.data
+    assert b'name="is_ops"' in response.data

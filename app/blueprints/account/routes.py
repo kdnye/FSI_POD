@@ -9,6 +9,12 @@ from models import Role, User
 account_bp = Blueprint("account", __name__, url_prefix="/account")
 
 
+def _has_privileged_access(*, role: Role, employee_approved: bool, is_active: bool, is_ops: bool) -> bool:
+    if not employee_approved or not is_active:
+        return False
+    return role.is_admin or is_ops
+
+
 @account_bp.route("/profile", methods=["GET", "POST"])
 @require_authenticated()
 def profile():
@@ -73,9 +79,16 @@ def admin_users():
             flash("User not found.", "error")
             return redirect(url_for("account.admin_users"))
 
-        if user.id == g.current_user.id and (updated_role != current_role or not is_active or not employee_approved):
-            flash("You cannot remove your own administrative access.", "error")
-            return redirect(url_for("account.admin_users"))
+        if user.id == g.current_user.id:
+            will_keep_privileged_access = _has_privileged_access(
+                role=updated_role,
+                employee_approved=employee_approved,
+                is_active=is_active,
+                is_ops=is_ops,
+            )
+            if not will_keep_privileged_access:
+                flash("You cannot remove your own privileged access.", "error")
+                return redirect(url_for("account.admin_users"))
 
         user.role = updated_role.value
         user.employee_approved = employee_approved
