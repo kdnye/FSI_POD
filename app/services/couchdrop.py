@@ -58,30 +58,24 @@ class CouchdropService:
         folder_path = f"/Paperwork/{driver_name}/{date_str}"
         remote_path = f"{folder_path}/{file_storage.filename}"
         
-        headers = {
-            "token": token,
-            "Content-Type": "application/octet-stream"
-        }
-
         if not CouchdropService._ensure_path_exists(token, folder_path, timeout_seconds):
             logging.error("Couchdrop upload aborted: unable to ensure folder path %s", folder_path)
             return False
-        
-        # Rewind the stream before reading so uploads are not empty on retries.
-        stream = getattr(file_storage, "stream", None)
-        if stream and callable(getattr(stream, "seek", None)):
-            stream.seek(0)
-        elif callable(getattr(file_storage, "seek", None)):
-            file_storage.seek(0)
 
-        # Read file into memory once so it can be retried without re-seeking
+        file_storage.seek(0)
         file_bytes = file_storage.read()
         if not file_bytes:
             logging.error("Couchdrop upload aborted: received empty file bytes.")
             return False
+
+        headers = {
+            "token": token,
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(len(file_bytes)),
+        }
         
         try:
-            response = requests.post(
+            response = requests.put(
                 "https://fileio.couchdrop.io/file/upload",
                 headers=headers,
                 params={"path": remote_path},
@@ -95,6 +89,6 @@ class CouchdropService:
                 
             return True
             
-        except Exception as e:
+        except requests.RequestException as e:
             logging.error(f"Couchdrop Connection Error: {str(e)}")
             return False
