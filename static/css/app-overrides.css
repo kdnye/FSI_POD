@@ -51,6 +51,44 @@
   color: var(--nav-link);
 }
 
+.fsi-card {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+}
+
+.fsi-card > p {
+  margin-top: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.fsi-card--narrow {
+  width: min(100%, 34rem);
+}
+
+.fsi-form-grid label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 500;
+}
+
+.fsi-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.fsi-form-actions .fsi-primary-btn,
+.fsi-form-actions .fsi-secondary-btn {
+  min-height: 2.45rem;
+}
+
+.fsi-status-line {
+  margin-top: 0.35rem;
+  font-weight: 600;
+}
+
 .fsi-flashes {
   list-style: none;
   margin: 0 0 1rem;
@@ -218,6 +256,12 @@
 
   .fsi-card {
     padding: 1rem;
+  }
+
+  .fsi-form-actions .fsi-primary-btn,
+  .fsi-form-actions .fsi-secondary-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .fsi-display {
