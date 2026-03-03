@@ -1,3 +1,39 @@
+.fsi-navbar .fsi-container {
+  gap: 0.75rem;
+}
+
+.fsi-brand {
+  max-width: 13.5rem;
+  line-height: 1.15;
+}
+
+.fsi-help {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-weight: 700;
+  color: var(--nav-link);
+  background: color-mix(in oklab, var(--nav-hover-bg) 78%, transparent);
+  border: 1px solid var(--color-border);
+}
+
+.fsi-help:hover,
+.fsi-help:focus-visible {
+  background: var(--nav-hover-bg);
+  outline: none;
+}
+
+.fsi-account-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
 .fsi-nav-avatar {
   width: 34px;
   height: 34px;
@@ -7,7 +43,7 @@
 }
 
 .fsi-nav-user-name {
-  max-width: 12rem;
+  max-width: 9.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -157,6 +193,25 @@
 }
 
 @media (max-width: 768px) {
+  .fsi-navbar .fsi-container {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .fsi-brand {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  .fsi-nav-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .fsi-account-menu {
+    margin-left: auto;
+  }
+
   .fsi-container {
     padding: 1rem;
   }
@@ -171,8 +226,7 @@
   }
 
   .fsi-nav-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    flex-wrap: nowrap;
   }
 
   .fsi-table {
@@ -188,5 +242,15 @@
 
   .pod-qr-reader {
     max-width: 320px;
+  }
+}
+
+@media (max-width: 560px) {
+  .fsi-nav-user-name {
+    display: none;
+  }
+
+  .fsi-secondary-btn {
+    padding-inline: 0.8rem;
   }
 }
