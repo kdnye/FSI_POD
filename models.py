@@ -22,6 +22,23 @@ class Role(str, Enum):
     SUPERVISOR = "SUPERVISOR"
     FINANCE = "FINANCE"
     ADMIN = "ADMIN"
+    ADMINISTRATOR = "ADMINISTRATOR"
+
+    @classmethod
+    def from_value(cls, value: "Role | str") -> "Role":
+        if isinstance(value, cls):
+            return value
+
+        normalized = str(value or "").strip().upper()
+        aliases = {
+            "ADMINISTRATOR": cls.ADMINISTRATOR.value,
+        }
+
+        return cls(aliases.get(normalized, normalized))
+
+    @property
+    def is_admin(self) -> bool:
+        return self in {Role.ADMIN, Role.ADMINISTRATOR}
 
 class User(db.Model):
     """
@@ -47,6 +64,7 @@ class User(db.Model):
             "SUPERVISOR",
             "FINANCE",
             "ADMIN",
+            "ADMINISTRATOR",
             name="user_role", # Must match the existing Postgres enum type name
         ),
         nullable=False,

@@ -41,3 +41,10 @@ def test_unknown_resource_and_action_are_denied_with_audit_messages():
 
     assert missing_action.allowed is False
     assert "ACCESS_DENIED action_undefined" in missing_action.message
+
+
+def test_administrator_alias_is_treated_as_admin():
+    decision = evaluate_access(user_role="administrator", resource="admin_panel", action="manage")
+
+    assert decision.allowed is True
+    assert "role=ADMINISTRATOR" in decision.message

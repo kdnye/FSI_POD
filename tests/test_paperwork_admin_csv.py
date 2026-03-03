@@ -46,6 +46,29 @@ def test_admin_can_upload_load_board_csv(client):
     assert entry.status == "Pending"
 
 
+
+
+def test_administrator_can_upload_load_board_csv(client):
+    admin_id = _create_user("administrator-loads@example.com", role=Role.ADMINISTRATOR)
+    _login(client, admin_id)
+
+    csv_payload = (
+        "hwb_number,shipper,consignee,contact_name,phone,assigned_driver,status\n"
+        "HWB-102,Acme,Receiver Three,Alex Doe,555-0004,1,Pending\n"
+    )
+
+    response = client.post(
+        "/load-board/upload-csv",
+        data={"load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    entry = db.session.get(LoadBoard, "HWB-102")
+    assert entry is not None
+    assert entry.shipper == "Acme"
+
 def test_non_admin_cannot_upload_load_board_csv(client):
     user_id = _create_user("driver-loads@example.com", role=Role.EMPLOYEE)
     _login(client, user_id)

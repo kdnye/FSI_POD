@@ -10,6 +10,7 @@ ROLE_HIERARCHY: dict[Role, int] = {
     Role.SUPERVISOR: 2,
     Role.FINANCE: 3,
     Role.ADMIN: 4,
+    Role.ADMINISTRATOR: 4,
 }
 
 # resource -> action -> minimum role required
@@ -36,7 +37,18 @@ class AccessDecision:
     message: str
 
 
-def evaluate_access(*, user_role: Role, resource: str, action: str) -> AccessDecision:
+def evaluate_access(*, user_role: Role | str, resource: str, action: str) -> AccessDecision:
+    try:
+        normalized_role = Role.from_value(user_role)
+    except ValueError:
+        return AccessDecision(
+            allowed=False,
+            message=(
+                f"ACCESS_DENIED invalid_role resource={resource.strip().lower()} "
+                f"action={action.strip().lower()} role={str(user_role).strip()}"
+            ),
+        )
+
     normalized_resource = resource.strip().lower()
     normalized_action = action.strip().lower()
 
@@ -46,7 +58,7 @@ def evaluate_access(*, user_role: Role, resource: str, action: str) -> AccessDec
             allowed=False,
             message=(
                 f"ACCESS_DENIED policy_missing resource={normalized_resource} "
-                f"action={normalized_action} role={user_role.value}"
+                f"action={normalized_action} role={normalized_role.value}"
             ),
         )
 
@@ -56,16 +68,16 @@ def evaluate_access(*, user_role: Role, resource: str, action: str) -> AccessDec
             allowed=False,
             message=(
                 f"ACCESS_DENIED action_undefined resource={normalized_resource} "
-                f"action={normalized_action} role={user_role.value}"
+                f"action={normalized_action} role={normalized_role.value}"
             ),
         )
 
-    if ROLE_HIERARCHY[user_role] < ROLE_HIERARCHY[minimum_role]:
+    if ROLE_HIERARCHY[normalized_role] < ROLE_HIERARCHY[minimum_role]:
         return AccessDecision(
             allowed=False,
             message=(
                 f"ACCESS_DENIED insufficient_role resource={normalized_resource} "
-                f"action={normalized_action} role={user_role.value} "
+                f"action={normalized_action} role={normalized_role.value} "
                 f"required={minimum_role.value}"
             ),
         )
@@ -74,6 +86,6 @@ def evaluate_access(*, user_role: Role, resource: str, action: str) -> AccessDec
         allowed=True,
         message=(
             f"ACCESS_GRANTED resource={normalized_resource} action={normalized_action} "
-            f"role={user_role.value}"
+            f"role={normalized_role.value}"
         ),
     )
