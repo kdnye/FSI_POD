@@ -34,11 +34,15 @@
             <div class="pod-signature-shell">
                 <canvas id="signature-pad" width="400" height="200" style="touch-action: none; width: 100%;"></canvas>
             </div>
-            <button type="button" class="fsi-secondary-btn pod-clear-signature" id="clear-signature">Clear Signature</button>
+            <div class="fsi-form-actions">
+                <button type="button" class="fsi-secondary-btn pod-clear-signature" id="clear-signature">Clear Signature</button>
+            </div>
         </div>
 
-        <button class="fsi-primary-btn" id="submitBtn" type="submit">Submit POD Event</button>
-        <div id="statusMessage" class="pod-status-message"></div>
+        <div class="fsi-form-actions">
+            <button class="fsi-primary-btn" id="submitBtn" type="submit">Submit POD Event</button>
+        </div>
+        <div id="statusMessage" class="pod-status-message fsi-status-line" aria-live="polite"></div>
     </form>
 </section>
 

@@ -5,15 +5,18 @@
     <h1 class="fsi-display">Upload Driver Paperwork</h1>
     <p>Select up to 100 scanned documents for batch upload.</p>
     
-    <form id="uploadForm" method="post" enctype="multipart/form-data">
+    <form id="uploadForm" method="post" enctype="multipart/form-data" class="fsi-form-grid" novalidate>
         <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}"/>
         
-        <div style="margin-bottom: 1rem;">
-            <input type="file" name="scans" id="scans" multiple required>
-        </div>
+        <label>
+            Batch Files
+            <input type="file" name="scans" id="scans" class="fsi-input" multiple required>
+        </label>
         
-        <button class="fsi-primary-btn" id="uploadBtn" type="submit">Upload Batch</button>
-        <div id="uploadStatus" style="margin-top: 15px; font-weight: bold; color: var(--primary-color);"></div>
+        <div class="fsi-form-actions">
+            <button class="fsi-primary-btn" id="uploadBtn" type="submit">Upload Batch</button>
+        </div>
+        <div id="uploadStatus" class="fsi-status-line" aria-live="polite"></div>
     </form>
 </section>
 
