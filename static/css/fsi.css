@@ -159,3 +159,20 @@ body {
   color: var(--nav-link);
   outline: none;
 }
+
+.fsi-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fsi-admin-table th,
+.fsi-admin-table td {
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.65rem;
+  white-space: nowrap;
+}
+
+.fsi-admin-table select {
+  min-width: 10rem;
+}

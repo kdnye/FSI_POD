@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard · User Management{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+  <h1 class="fsi-display" style="margin-top:0;">Admin Dashboard</h1>
+  <p>Manage user access, account status, and approval state.</p>
+</section>
+
+<section class="fsi-card" style="margin-top: 1rem; overflow-x: auto;">
+  <table class="fsi-admin-table">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Approved</th>
+        <th>Active</th>
+        <th>Save</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="user_id" value="{{ user.id }}">
+          <td>{{ user.email }}</td>
+          <td>
+            <select name="role" {% if user.id == g.current_user.id %}disabled{% endif %}>
+              {% for role in role_choices %}
+              <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role }}</option>
+              {% endfor %}
+            </select>
+            {% if user.id == g.current_user.id %}
+              <input type="hidden" name="role" value="{{ user.role }}">
+            {% endif %}
+          </td>
+          <td>
+            <input type="checkbox" name="employee_approved" {% if user.employee_approved %}checked{% endif %} {% if user.id == g.current_user.id %}disabled{% endif %}>
+            {% if user.id == g.current_user.id %}
+              <input type="hidden" name="employee_approved" value="on">
+            {% endif %}
+          </td>
+          <td>
+            <input type="checkbox" name="is_active" {% if user.is_active %}checked{% endif %} {% if user.id == g.current_user.id %}disabled{% endif %}>
+            {% if user.id == g.current_user.id %}
+              <input type="hidden" name="is_active" value="on">
+            {% endif %}
+          </td>
+          <td><button type="submit" class="fsi-primary-btn">Update</button></td>
+        </form>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

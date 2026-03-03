@@ -57,6 +57,9 @@
           >
             <li role="none"><a role="menuitem" href="/account/profile" tabindex="-1" data-account-menu-item>Profile</a></li>
             <li role="none"><a role="menuitem" href="/account/settings" tabindex="-1" data-account-menu-item>Settings</a></li>
+            {% if g.current_user and g.current_user.role in ['ADMIN', 'ADMINISTRATOR'] %}
+            <li role="none"><a role="menuitem" href="/account/admin/users" tabindex="-1" data-account-menu-item>Admin Dashboard</a></li>
+            {% endif %}
             <li role="none"><a role="menuitem" href="/auth/logout" tabindex="-1" data-account-menu-item>Sign out</a></li>
           </ul>
         </div>
