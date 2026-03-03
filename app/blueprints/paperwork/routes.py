@@ -9,7 +9,7 @@ from werkzeug.datastructures import FileStorage
 from sqlalchemy import inspect
 
 from app import db
-from models import PODEvent
+from models import PODEvent, Role
 from app.blueprints.auth.guards import require_employee_approval
 from app.services.couchdrop import CouchdropService
 from app.services.gcs import GCSService
@@ -23,11 +23,23 @@ ARIZONA_TZ = ZoneInfo("America/Phoenix")
 
 def current_user_role() -> str:
     role = getattr(g.current_user, "role", None)
-    return getattr(role, "value", role)
+    raw_role = getattr(role, "value", role)
+
+    try:
+        return Role.from_value(raw_role).value
+    except ValueError:
+        return str(raw_role or "")
+
+
+def is_admin_user() -> bool:
+    try:
+        return Role.from_value(current_user_role()).is_admin
+    except ValueError:
+        return False
 
 
 def require_admin_or_redirect(redirect_endpoint: str):
-    if current_user_role() != "ADMIN":
+    if not is_admin_user():
         flash("Admin access is required.")
         return redirect(url_for(redirect_endpoint))
     return None
@@ -252,7 +264,7 @@ def active_load_board():
         "paperwork/load_board.html",
         title="Active Load Board",
         loads=loads,
-        is_admin=current_user_role() == "ADMIN",
+        is_admin=is_admin_user(),
     )
 
 
@@ -332,7 +344,7 @@ def pod_history():
         "paperwork/pod_history.html",
         title="POD History",
         records=records,
-        is_admin=current_user_role() == "ADMIN",
+        is_admin=is_admin_user(),
     )
 
 
@@ -411,7 +423,7 @@ def history():
 @require_employee_approval()
 def ops_dashboard():
     # Only allow Admin or Supervisor to view the ops dashboard (optional RBAC)
-    if current_user_role() not in ["ADMIN", "SUPERVISOR"]:
+    if current_user_role() not in [Role.ADMIN.value, Role.ADMINISTRATOR.value, Role.SUPERVISOR.value]:
         flash("Unauthorized access.")
         return redirect(url_for("paperwork.history"))
         
