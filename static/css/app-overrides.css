@@ -96,6 +96,53 @@
   background: #fef2f2;
   color: #dc2626;
 }
+
+.fsi-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.fsi-table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+
+.fsi-table th,
+.fsi-table td {
+  padding: 0.75rem;
+}
+
+.pod-event-fieldset {
+  margin-bottom: 1.5rem;
+}
+
+.pod-qr-reader {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  overflow: hidden;
+}
+
+.pod-signature-shell {
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pod-clear-signature {
+  margin-top: 0.5rem;
+  width: fit-content;
+}
+
+.pod-status-message {
+  margin-top: 0.9rem;
+  font-weight: 700;
+}
 [data-theme='dark'] .fsi-summary-success,
 [data-bs-theme='dark'] .fsi-summary-success {
   background: rgba(22, 163, 74, 0.15);
@@ -107,4 +154,39 @@
   background: rgba(220, 38, 38, 0.15);
   border-color: #f87171;
   color: #f87171;
+}
+
+@media (max-width: 768px) {
+  .fsi-container {
+    padding: 1rem;
+  }
+
+  .fsi-card {
+    padding: 1rem;
+  }
+
+  .fsi-display {
+    font-size: 1.55rem;
+    letter-spacing: 0.035em;
+  }
+
+  .fsi-nav-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .fsi-table {
+    min-width: 620px;
+  }
+
+  .fsi-table th,
+  .fsi-table td {
+    padding: 0.6rem;
+    font-size: 0.92rem;
+    white-space: nowrap;
+  }
+
+  .pod-qr-reader {
+    max-width: 320px;
+  }
 }
