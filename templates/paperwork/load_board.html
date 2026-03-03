@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Active Load Board | FSI{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+    <h1 class="fsi-display">Active Load Board</h1>
+    {% if loads %}
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr>
+                <th align="left">HWB</th>
+                <th align="left">Shipper</th>
+                <th align="left">Consignee</th>
+                <th align="left">Contact</th>
+                <th align="left">Phone</th>
+                <th align="left">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for load in loads %}
+            <tr>
+                <td>{{ load.hwb_number }}</td>
+                <td>{{ load.shipper }}</td>
+                <td>{{ load.consignee }}</td>
+                <td>{{ load.contact_name }}</td>
+                <td>{{ load.phone }}</td>
+                <td>{{ load.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No active loads assigned to you.</p>
+    {% endif %}
+</section>
+{% endblock %}

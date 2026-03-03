@@ -4,24 +4,39 @@
 {% block content %}
 <section class="fsi-card">
     <h1 class="fsi-display">Record POD Event</h1>
-    
+
     <form id="podEventForm" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" id="latitude" name="latitude">
         <input type="hidden" id="longitude" name="longitude">
 
         <div class="fsi-form-grid pod-event-fieldset">
-            <label>Scan BOL / Reference QR</label>
+            <label>Scan HWB Barcode</label>
             <div id="qr-reader" class="pod-qr-reader"></div>
-            <input type="text" id="reference_id" name="reference_id" class="fsi-input" placeholder="Reference ID (Scanned or Manual)" required>
+            <input type="text" id="hwb_number" name="hwb_number" class="fsi-input" placeholder="HWB Number" required>
+            <button type="button" id="lookup-hwb" class="fsi-secondary-btn">Lookup HWB</button>
+            <small id="scan-mode">Awaiting scan...</small>
+        </div>
+
+        <div id="load-board-summary" class="fsi-form-grid pod-event-fieldset" style="display: none;">
+            <label>Load Board Summary (Read Only)</label>
+            <p><strong>Shipper:</strong> <span id="summary-shipper">-</span></p>
+            <p><strong>Consignee:</strong> <span id="summary-consignee">-</span></p>
+            <p><strong>Contact:</strong> <span id="summary-contact">-</span></p>
+            <p><strong>Phone:</strong> <span id="summary-phone">-</span></p>
         </div>
 
         <div class="fsi-form-grid pod-event-fieldset">
-            <label>Event Type</label>
-            <select name="event_type" id="event_type" class="fsi-input" required>
-                <option value="PICKUP">Pickup</option>
-                <option value="DELIVERY">Delivery</option>
+            <label>Action Type</label>
+            <select name="action_type" id="action_type" class="fsi-input" required>
+                <option value="Pickup">Pickup</option>
+                <option value="Delivery">Delivery</option>
             </select>
+        </div>
+
+        <div class="fsi-form-grid pod-event-fieldset">
+            <label>Recipient Name</label>
+            <input type="text" id="recipient_name" name="recipient_name" class="fsi-input" required>
         </div>
 
         <div class="fsi-form-grid pod-event-fieldset">
@@ -47,7 +62,6 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    // --- Geolocation Capture ---
     function captureLocation() {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
@@ -61,7 +75,44 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // --- QR Scanner Initialization ---
+    const summaryShell = document.getElementById('load-board-summary');
+    const modeText = document.getElementById('scan-mode');
+
+    async function lookupHwb() {
+        const hwbNumber = document.getElementById('hwb_number').value.trim();
+        if (!hwbNumber) {
+            modeText.textContent = 'Scan or enter an HWB number first.';
+            return;
+        }
+
+        const response = await fetch('{{ url_for("paperwork.scan_hwb") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRFToken': document.getElementById('csrf_token').value
+            },
+            body: JSON.stringify({ hwb_number: hwbNumber })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            modeText.textContent = payload.error || 'Lookup failed.';
+            return;
+        }
+
+        if (payload.mode === 'enhanced') {
+            document.getElementById('summary-shipper').textContent = payload.shipper;
+            document.getElementById('summary-consignee').textContent = payload.consignee;
+            document.getElementById('summary-contact').textContent = payload.contact_name;
+            document.getElementById('summary-phone').textContent = payload.phone;
+            summaryShell.style.display = 'block';
+            modeText.textContent = 'Enhanced mode: Load Board record found.';
+        } else {
+            summaryShell.style.display = 'none';
+            modeText.textContent = 'Base mode: No load board match, manual POD will be recorded.';
+        }
+    }
+
     function getQrConfig() {
         const viewportWidth = window.innerWidth || 1024;
         const responsiveBox = Math.max(160, Math.min(220, Math.floor(viewportWidth * 0.42)));
@@ -69,19 +120,18 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", getQrConfig(), false);
-    html5QrcodeScanner.render((decodedText, decodedResult) => {
-        document.getElementById('reference_id').value = decodedText;
-        html5QrcodeScanner.clear(); // Stop scanning once found
-        captureLocation(); // Grab GPS exact moment of scan
-    }, (errorMessage) => {
-        // Suppress continuous read errors
-    });
+    html5QrcodeScanner.render(async (decodedText) => {
+        document.getElementById('hwb_number').value = decodedText;
+        html5QrcodeScanner.clear();
+        captureLocation();
+        await lookupHwb();
+    }, () => {});
 
-    // --- Signature Pad Initialization ---
+    document.getElementById('lookup-hwb').addEventListener('click', lookupHwb);
+
     const canvas = document.getElementById('signature-pad');
     const signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
 
-    // Handle canvas resizing for responsive layouts
     function resizeCanvas() {
         const ratio =  Math.max(window.devicePixelRatio || 1, 1);
         canvas.width = canvas.offsetWidth * ratio;
@@ -94,10 +144,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
     document.getElementById('clear-signature').addEventListener('click', () => signaturePad.clear());
 
-    // --- Form Submission Assembly ---
     document.getElementById('podEventForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        
+
         if (signaturePad.isEmpty()) {
             alert("Please provide a signature.");
             return;
@@ -108,14 +157,10 @@ document.addEventListener("DOMContentLoaded", function() {
         submitBtn.disabled = true;
         statusDiv.innerText = "Submitting event data...";
 
-        // Ensure GPS is captured if QR scan was skipped manually
         if (!document.getElementById('latitude').value) captureLocation();
 
         const formData = new FormData(this);
-        
-        // Export signature as base64 PNG and append to payload
-        const signatureDataUrl = signaturePad.toDataURL("image/png");
-        formData.append('signature_base64', signatureDataUrl);
+        formData.append('signature_base64', signaturePad.toDataURL("image/png"));
 
         try {
             const response = await fetch('{{ url_for("paperwork.log_pod_event") }}', {
@@ -123,11 +168,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 headers: { 'Accept': 'application/json' },
                 body: formData
             });
-            
+
             if (response.ok) {
                 statusDiv.innerText = "POD Event successfully recorded.";
                 statusDiv.style.color = "green";
-                setTimeout(() => window.location.reload(), 2000);
+                setTimeout(() => window.location.reload(), 1500);
             } else {
                 const err = await response.json();
                 statusDiv.innerText = "Error: " + err.error;
