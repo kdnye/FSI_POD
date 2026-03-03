@@ -150,3 +150,5 @@ class PODRecord(db.Model):
     consignee = db.Column(db.String(150), nullable=True)
     contact_name = db.Column(db.String(120), nullable=True)
     phone = db.Column(db.String(40), nullable=True)
+    off_sheet_confirmed = db.Column(db.Boolean, nullable=False, default=False)
+    reassignment_note = db.Column(db.Text, nullable=True)

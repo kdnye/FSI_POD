@@ -6,7 +6,7 @@ from io import BytesIO, StringIO
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from werkzeug.datastructures import FileStorage
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app import db
 from models import PODEvent, Role
@@ -103,6 +103,13 @@ def ensure_hybrid_pod_tables() -> None:
         LoadBoard.__table__.create(db.engine)
     if PODRecord.__tablename__ not in table_names:
         PODRecord.__table__.create(db.engine)
+    else:
+        pod_record_columns = {column["name"] for column in inspector.get_columns(PODRecord.__tablename__)}
+        if "off_sheet_confirmed" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN off_sheet_confirmed BOOLEAN NOT NULL DEFAULT FALSE"))
+        if "reassignment_note" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN reassignment_note TEXT"))
+        db.session.commit()
 
     current_app.config["HYBRID_POD_TABLES_READY"] = True
 
@@ -116,14 +123,33 @@ def submit_pod(
     signature_file,
     latitude: str | None,
     longitude: str | None,
+    off_sheet_confirmed: bool,
+    reassignment_note: str | None,
 ) -> None:
     """Persist POD data in hybrid mode and keep legacy POD event logging."""
     if action_type not in {"Pickup", "Delivery"}:
         raise ValueError("Invalid action type.")
 
     load_board_entry = db.session.get(LoadBoard, hwb_number)
+    user_has_full_board_rights = is_ops_or_admin_user()
+    is_assigned_to_current_user = bool(load_board_entry and load_board_entry.assigned_driver == g.current_user.id)
+    is_off_sheet = bool(load_board_entry and not user_has_full_board_rights and not is_assigned_to_current_user)
+
+    if is_off_sheet and not off_sheet_confirmed:
+        raise ValueError("Off-sheet completion requires confirmation.")
+
     photo_uri = GCSService.upload_file(pod_photo, folder=f"pod_photos/{action_type.lower()}")
     sig_uri = GCSService.upload_file(signature_file, folder=f"signatures/{action_type.lower()}")
+
+    persisted_reassignment_note = None
+    if is_off_sheet and off_sheet_confirmed:
+        note_suffix = f" Note: {reassignment_note.strip()}" if reassignment_note and reassignment_note.strip() else ""
+        persisted_reassignment_note = (
+            f"Off-sheet confirmation accepted. Load reassigned from "
+            f"{load_board_entry.assigned_driver if load_board_entry.assigned_driver is not None else 'unassigned'} "
+            f"to {g.current_user.id}.{note_suffix}"
+        )
+        load_board_entry.assigned_driver = g.current_user.id
 
     pod_record = PODRecord(
         hwb_number=hwb_number,
@@ -132,6 +158,8 @@ def submit_pod(
         recipient_name=recipient_name,
         driver_id=g.current_user.id,
         action_type=action_type,
+        off_sheet_confirmed=off_sheet_confirmed,
+        reassignment_note=persisted_reassignment_note,
     )
 
     if load_board_entry:
@@ -171,6 +199,8 @@ def log_pod_event():
     recipient_name = (request.form.get("recipient_name") or "").strip()
     lat = request.form.get("latitude")
     lon = request.form.get("longitude")
+    off_sheet_confirmed = (request.form.get("off_sheet_confirmed") or "").strip().lower() in {"1", "true", "yes", "on"}
+    reassignment_note = (request.form.get("reassignment_note") or "").strip() or None
 
     if not hwb_number:
         message = {"error": "HWB number is required."}
@@ -216,6 +246,8 @@ def log_pod_event():
             signature_file=signature_file,
             latitude=lat,
             longitude=lon,
+            off_sheet_confirmed=off_sheet_confirmed,
+            reassignment_note=reassignment_note,
         )
         db.session.commit()
 
@@ -243,7 +275,26 @@ def scan_hwb():
 
     load_board_entry = db.session.get(LoadBoard, hwb_number)
     if not load_board_entry:
-        return jsonify({"mode": "base", "hwb_number": hwb_number}), 200
+        return jsonify(
+            {
+                "mode": "base",
+                "hwb_number": hwb_number,
+                "user_has_full_board_rights": is_ops_or_admin_user(),
+                "is_assigned_to_current_user": False,
+                "warning_required": False,
+                "warning_message": "",
+            }
+        ), 200
+
+    user_has_full_board_rights = is_ops_or_admin_user()
+    is_assigned_to_current_user = load_board_entry.assigned_driver == g.current_user.id
+    warning_required = not user_has_full_board_rights and not is_assigned_to_current_user
+    warning_message = (
+        "This load is currently off-sheet for your driver assignment. "
+        "Confirm to continue and reassign this load to yourself."
+        if warning_required
+        else ""
+    )
 
     return jsonify(
         {
@@ -254,6 +305,10 @@ def scan_hwb():
             "contact_name": load_board_entry.contact_name,
             "phone": load_board_entry.phone,
             "status": load_board_entry.status,
+            "user_has_full_board_rights": user_has_full_board_rights,
+            "is_assigned_to_current_user": is_assigned_to_current_user,
+            "warning_required": warning_required,
+            "warning_message": warning_message,
         }
     ), 200
 
