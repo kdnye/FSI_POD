@@ -208,6 +208,12 @@
   background: #fff;
 }
 
+.pod-signature-canvas {
+  width: 100%;
+  height: 200px;
+  touch-action: none;
+}
+
 .pod-clear-signature {
   margin-top: 0.5rem;
   width: fit-content;
@@ -286,6 +292,10 @@
 
   .pod-qr-reader {
     max-width: 320px;
+  }
+
+  .pod-signature-canvas {
+    height: 240px;
   }
 }
 
