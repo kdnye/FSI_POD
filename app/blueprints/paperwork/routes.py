@@ -45,7 +45,7 @@ def is_ops_or_admin_user() -> bool:
     return bool(getattr(g.current_user, "is_ops", False))
 
 
-def require_admin_or_redirect(redirect_endpoint: str):
+def require_ops_or_admin_or_redirect(redirect_endpoint: str):
     if not is_ops_or_admin_user():
         flash("Ops or admin access is required.")
         return redirect(url_for(redirect_endpoint))
@@ -280,7 +280,7 @@ def active_load_board():
 @require_employee_approval()
 def upload_load_board_csv():
     ensure_hybrid_pod_tables()
-    unauthorized = require_admin_or_redirect("paperwork.active_load_board")
+    unauthorized = require_ops_or_admin_or_redirect("paperwork.active_load_board")
     if unauthorized:
         return unauthorized
 
@@ -342,17 +342,18 @@ def upload_load_board_csv():
 @require_employee_approval()
 def pod_history():
     ensure_hybrid_pod_tables()
-    records = (
-        PODRecord.query.filter_by(driver_id=g.current_user.id)
-        .order_by(PODRecord.id.desc())
-        .limit(100)
-        .all()
-    )
+    has_full_history_access = is_ops_or_admin_user()
+    query = PODRecord.query.order_by(PODRecord.id.desc())
+    if not has_full_history_access:
+        query = query.filter_by(driver_id=g.current_user.id)
+
+    records = query.limit(100).all()
+
     return render_template(
         "paperwork/pod_history.html",
-        title="POD History",
+        title="POD History" if has_full_history_access else "My POD History",
         records=records,
-        is_admin=is_ops_or_admin_user(),
+        has_full_history_access=has_full_history_access,
     )
 
 
@@ -360,7 +361,7 @@ def pod_history():
 @require_employee_approval()
 def pod_history_export():
     ensure_hybrid_pod_tables()
-    unauthorized = require_admin_or_redirect("paperwork.pod_history")
+    unauthorized = require_ops_or_admin_or_redirect("paperwork.pod_history")
     if unauthorized:
         return unauthorized
 

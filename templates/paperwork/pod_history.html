@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}POD History | FSI{% endblock %}
+{% block title %}{% if has_full_history_access %}POD History{% else %}My POD History{% endif %} | FSI{% endblock %}
 
 {% block content %}
 <section class="fsi-card">
-    <h1 class="fsi-display">POD History</h1>
+    <h1 class="fsi-display">{% if has_full_history_access %}POD History{% else %}My POD History{% endif %}</h1>
 
-    {% if is_admin %}
+    {% if has_full_history_access %}
     <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
-        <h2 style="margin-top: 0;">Admin CSV Exports</h2>
+        <h2 style="margin-top: 0;">Ops/Admin CSV Exports</h2>
         <p style="margin-top: 0.5rem;">
             <a href="{{ url_for('paperwork.pod_history_export') }}">Download full POD history CSV</a>
         </p>
@@ -19,6 +19,8 @@
             <button type="submit">Download ranged CSV</button>
         </form>
     </section>
+    {% else %}
+    <p style="margin-top: 0;">Showing only your POD events. Ops/Admin users can export full history.</p>
     {% endif %}
 
     {% if records %}

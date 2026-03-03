@@ -245,3 +245,125 @@ def test_non_admin_cannot_export_pod_history_csv(client):
     response = client.get("/pod/history/export", follow_redirects=False)
 
     assert response.status_code == 302
+
+
+def test_ops_user_sees_full_pod_history_and_can_export_global_csv(client):
+    ops_user = User(
+        email="ops-history@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+        is_ops=True,
+    )
+    other_user = User(
+        email="driver-history-other@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+    )
+    db.session.add_all([ops_user, other_user])
+    db.session.commit()
+    _login(client, ops_user.id)
+
+    db.session.add_all(
+        [
+            PODRecord(
+                hwb_number="HWB-OPS-ME",
+                delivery_photo="gs://pod/photo-ops.jpg",
+                signature_image="gs://pod/signature-ops.jpg",
+                recipient_name="Ops Receiver",
+                timestamp=datetime(2024, 1, 15, 12, 0, tzinfo=timezone.utc),
+                driver_id=ops_user.id,
+                action_type="Delivery",
+                shipper="Acme",
+                consignee="Receiver Ops",
+                contact_name="Ops Contact",
+                phone="555-0100",
+            ),
+            PODRecord(
+                hwb_number="HWB-OPS-OTHER",
+                delivery_photo="gs://pod/photo-other.jpg",
+                signature_image="gs://pod/signature-other.jpg",
+                recipient_name="Other Receiver",
+                timestamp=datetime(2024, 1, 15, 13, 0, tzinfo=timezone.utc),
+                driver_id=other_user.id,
+                action_type="Delivery",
+                shipper="Acme",
+                consignee="Receiver Other",
+                contact_name="Other Contact",
+                phone="555-0101",
+            ),
+        ]
+    )
+    db.session.commit()
+
+    history_response = client.get("/pod/history")
+    history_body = history_response.get_data(as_text=True)
+
+    assert history_response.status_code == 200
+    assert "POD History" in history_body
+    assert "My POD History" not in history_body
+    assert "Ops/Admin CSV Exports" in history_body
+    assert "HWB-OPS-ME" in history_body
+    assert "HWB-OPS-OTHER" in history_body
+
+    export_response = client.get("/pod/history/export")
+    export_body = export_response.get_data(as_text=True)
+
+    assert export_response.status_code == 200
+    assert "text/csv" in export_response.content_type
+    assert "HWB-OPS-ME" in export_body
+    assert "HWB-OPS-OTHER" in export_body
+
+
+def test_non_ops_user_sees_only_my_pod_history_and_cannot_export_global_csv(client):
+    user_id = _create_user("driver-history@example.com", role=Role.EMPLOYEE)
+    other_user_id = _create_user("driver-history-other-two@example.com", role=Role.EMPLOYEE)
+    _login(client, user_id)
+
+    db.session.add_all(
+        [
+            PODRecord(
+                hwb_number="HWB-MY-HISTORY",
+                delivery_photo="gs://pod/photo-my.jpg",
+                signature_image="gs://pod/signature-my.jpg",
+                recipient_name="My Receiver",
+                timestamp=datetime(2024, 1, 15, 12, 0, tzinfo=timezone.utc),
+                driver_id=user_id,
+                action_type="Delivery",
+                shipper="Acme",
+                consignee="Receiver Mine",
+                contact_name="My Contact",
+                phone="555-0200",
+            ),
+            PODRecord(
+                hwb_number="HWB-OTHER-HISTORY",
+                delivery_photo="gs://pod/photo-not-my.jpg",
+                signature_image="gs://pod/signature-not-my.jpg",
+                recipient_name="Other Receiver",
+                timestamp=datetime(2024, 1, 15, 13, 0, tzinfo=timezone.utc),
+                driver_id=other_user_id,
+                action_type="Delivery",
+                shipper="Acme",
+                consignee="Receiver Other",
+                contact_name="Other Contact",
+                phone="555-0201",
+            ),
+        ]
+    )
+    db.session.commit()
+
+    history_response = client.get("/pod/history")
+    history_body = history_response.get_data(as_text=True)
+
+    assert history_response.status_code == 200
+    assert "My POD History" in history_body
+    assert "Showing only your POD events" in history_body
+    assert "Ops/Admin CSV Exports" not in history_body
+    assert "HWB-MY-HISTORY" in history_body
+    assert "HWB-OTHER-HISTORY" not in history_body
+
+    export_response = client.get("/pod/history/export", follow_redirects=False)
+    assert export_response.status_code == 302
