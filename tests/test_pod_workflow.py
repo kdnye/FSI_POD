@@ -148,6 +148,29 @@ def test_pod_scan_returns_enhanced_for_match_and_base_for_unmatched(client):
     assert unmatched_response.get_json()["mode"] == "base"
 
 
+def test_pod_history_includes_links_to_photo_and_signature(client):
+    driver_id = _create_user("pod-history-links@example.com")
+    _login(client, driver_id)
+
+    db.session.add(
+        PODRecord(
+            hwb_number="HWB-HISTORY-LINKS",
+            delivery_photo="https://storage.googleapis.com/bucket/pod.jpg",
+            signature_image="https://storage.googleapis.com/bucket/signature.png",
+            recipient_name="History Receiver",
+            driver_id=driver_id,
+            action_type="Delivery",
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/pod/history")
+
+    assert response.status_code == 200
+    assert b'href="https://storage.googleapis.com/bucket/pod.jpg"' in response.data
+    assert b'href="https://storage.googleapis.com/bucket/signature.png"' in response.data
+
+
 def test_shipping_reconciliation_view_classifies_manual_vs_system_match_when_available(app):
     inspector = inspect(db.engine)
     if "v_shipping_reconciliation" not in inspector.get_view_names():
