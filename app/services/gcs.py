@@ -28,8 +28,14 @@ class GCSService:
             "Content-Type": "application/octet-stream",
         }
 
+        # Always reset the in-memory stream before reading. This prevents
+        # zero-byte uploads when the same FileStorage object has already been
+        # accessed earlier in the request lifecycle.
         file_obj.seek(0)
         file_bytes = file_obj.read()
+        if not file_bytes:
+            logging.error("Couchdrop Upload Aborted: empty file stream for %s", file_obj.filename)
+            return None
 
         try:
             response = requests.post(
