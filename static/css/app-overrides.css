@@ -65,6 +65,10 @@
   width: min(100%, 34rem);
 }
 
+.fsi-card--load-board {
+  width: min(100%, 100vw - 2rem, 120rem);
+}
+
 .fsi-form-grid label {
   display: grid;
   gap: 0.35rem;
@@ -191,12 +195,15 @@
 .fsi-load-board-wrap {
   max-height: min(68vh, 820px);
   overflow-y: auto;
+  overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: 0.75rem;
+  direction: rtl;
 }
 
 .fsi-load-board-table {
   min-width: 1460px;
+  direction: ltr;
 }
 
 .fsi-load-board-table th,
