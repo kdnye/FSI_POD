@@ -291,34 +291,53 @@ body {
   color: #a7f3d0;
 }
 
+/* --- Stacked Layout logic for Shipper/Consignee Columns --- */
 .fsi-header-stack, .fsi-data-stack {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     line-height: 1.2;
+    text-align: left;
 }
 
 .fsi-header-stack__secondary, .fsi-data-stack__secondary {
-    font-size: 0.85em;
+    font-size: 0.825em;
     font-weight: normal;
     color: var(--color-text);
-    opacity: 0.7;
+    opacity: 0.65;
 }
 
 .fsi-column--stacked {
-    min-width: 180px;
-    max-width: 250px;
+    min-width: 200px;
+    max-width: 300px;
+    word-wrap: break-word;
+}
+
+/* --- Table Alignment and Structure --- */
+.fsi-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
 }
 
 .fsi-table th,
 .fsi-table td {
-    padding: 0.75rem;
-    vertical-align: top; /* Keeps stacked text aligned at the top */
+    padding: 0.75rem 0.5rem;
+    vertical-align: top; /* Critical for stacked text alignment */
     border-bottom: 1px solid var(--color-border);
+    text-align: left;
 }
 
-.fsi-load-board-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto;
+.fsi-load-board-table thead th {
+    background-color: var(--color-surface);
+    border-bottom: 2px solid var(--fsi-navy);
+}
+
+.fsi-table tbody tr:hover {
+    background-color: var(--nav-hover-bg);
+}
+
+.fsi-entity-cell div {
+    display: flex;
+    align-items: center;
 }
