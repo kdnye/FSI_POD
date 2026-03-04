@@ -145,6 +145,7 @@ class LoadBoard(db.Model):
     __tablename__ = "load_board"
 
     hwb_number = db.Column(db.String(100), primary_key=True)
+    mawb_number = db.Column(db.String(100), index=True, nullable=True)
     shipper = db.Column(db.String(150), nullable=False)
     consignee = db.Column(db.String(150), nullable=False)
     shipper_email = db.Column(db.String(255), nullable=True)
