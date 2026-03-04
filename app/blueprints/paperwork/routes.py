@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from werkzeug.datastructures import FileStorage
-from sqlalchemy import inspect, text
 
 from app import db
 from models import PODEvent, Role
@@ -126,42 +125,6 @@ def pod_history_csv_response(records, filename: str) -> Response:
         mimetype="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-def ensure_hybrid_pod_tables() -> None:
-    """Create hybrid POD tables when missing."""
-    if current_app.config.get("HYBRID_POD_TABLES_READY"):
-        return
-
-    inspector = inspect(db.engine)
-    table_names = inspector.get_table_names()
-    if LoadBoard.__tablename__ not in table_names:
-        LoadBoard.__table__.create(db.engine)
-    if PODRecord.__tablename__ not in table_names:
-        PODRecord.__table__.create(db.engine)
-    else:
-        pod_record_columns = {column["name"] for column in inspector.get_columns(PODRecord.__tablename__)}
-        if "off_sheet_confirmed" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN off_sheet_confirmed BOOLEAN NOT NULL DEFAULT FALSE"))
-        if "reassignment_note" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN reassignment_note TEXT"))
-        if "latitude" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN latitude VARCHAR(32)"))
-        if "longitude" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN longitude VARCHAR(32)"))
-        if "shipment_id" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN shipment_id BIGINT REFERENCES shipments(id) ON DELETE SET NULL"))
-        if "leg_id" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN leg_id BIGINT REFERENCES shipment_legs(id) ON DELETE SET NULL"))
-        if "leg_sequence" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN leg_sequence INTEGER"))
-        if "leg_type" not in pod_record_columns:
-            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN leg_type VARCHAR(64)"))
-        db.session.commit()
-    if ShipmentLegTransition.__tablename__ not in table_names:
-        ShipmentLegTransition.__table__.create(db.engine)
-
-    current_app.config["HYBRID_POD_TABLES_READY"] = True
 
 
 @dataclass
@@ -417,8 +380,6 @@ def submit_pod(
 @paperwork_bp.route("/pod/event", methods=["GET", "POST"])
 @require_employee_approval()
 def log_pod_event():
-    ensure_hybrid_pod_tables()
-
     if request.method == "GET":
         return render_template("paperwork/pod_event.html", title="Capture POD")
 
@@ -520,7 +481,6 @@ def log_pod_event():
 @paperwork_bp.post("/pod/scan")
 @require_employee_approval()
 def scan_hwb():
-    ensure_hybrid_pod_tables()
     payload = request.get_json(silent=True) or {}
     hwb_number = (payload.get("hwb_number") or "").strip()
     if not hwb_number:
@@ -569,7 +529,6 @@ def scan_hwb():
 @paperwork_bp.get("/load-board")
 @require_employee_approval()
 def active_load_board():
-    ensure_hybrid_pod_tables()
     full_board_access = is_ops_or_admin_user()
     show_delivered = request.args.get("show_delivered", "0") == "1"
     loads = query_loads(full_board_access, include_delivered=show_delivered)
@@ -610,7 +569,6 @@ def active_load_board():
 @paperwork_bp.post("/load-board/upload-csv")
 @require_employee_approval()
 def upload_load_board_csv():
-    ensure_hybrid_pod_tables()
     unauthorized = require_ops_or_admin_or_redirect("paperwork.active_load_board")
     if unauthorized:
         return unauthorized
@@ -850,7 +808,6 @@ def upload_load_board_csv():
 @paperwork_bp.get("/pod/history")
 @require_employee_approval()
 def pod_history():
-    ensure_hybrid_pod_tables()
     has_full_history_access = is_ops_or_admin_user()
     query = PODRecord.query.order_by(PODRecord.id.desc())
     if not has_full_history_access:
@@ -869,7 +826,6 @@ def pod_history():
 @paperwork_bp.get("/pod/history/export")
 @require_employee_approval()
 def pod_history_export():
-    ensure_hybrid_pod_tables()
     unauthorized = require_ops_or_admin_or_redirect("paperwork.pod_history")
     if unauthorized:
         return unauthorized
