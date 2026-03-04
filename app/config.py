@@ -88,6 +88,13 @@ def get_runtime_config() -> dict:
         elif not _is_production() and not db_url_str:
             db_url_str = "postgresql+psycopg://localhost/fsi_app"
 
+    email_queue_name = os.getenv("EMAIL_QUEUE_NAME", "email-queue").strip()
+    task_service_account_email = _get_env(
+        "TASK_SERVICE_ACCOUNT_EMAIL",
+        required_in_production=True,
+    ).strip()
+    public_service_url = _get_env("PUBLIC_SERVICE_URL", "", required_in_production=True).strip()
+
     return {
         "SECRET_KEY": _get_env("SECRET_KEY", "dev-only-change-me", required_in_production=True).strip(),
         "SQLALCHEMY_DATABASE_URI": db_url_str,
@@ -109,10 +116,25 @@ def get_runtime_config() -> dict:
         "POSTMARK_FROM_EMAIL": _get_env("POSTMARK_FROM_EMAIL", required_in_production=True).strip(),
         "GCP_PROJECT_ID": _get_env("GCP_PROJECT_ID", required_in_production=True).strip(),
         "GCP_REGION": os.getenv("GCP_REGION", "us-central1").strip(),
-        "EMAIL_QUEUE_NAME": os.getenv("EMAIL_QUEUE_NAME", "email-queue").strip(),
-        "QUEUE_NAME": os.getenv("EMAIL_QUEUE_NAME", "email-queue").strip(),
-        "PUBLIC_SERVICE_URL": _get_env("PUBLIC_SERVICE_URL", "", required_in_production=True).strip(),
-        "TASK_SERVICE_ACCOUNT_EMAIL": _get_env("TASK_SERVICE_ACCOUNT_EMAIL", required_in_production=True).strip(),
+        "EMAIL_QUEUE_NAME": email_queue_name,
+        "QUEUE_NAME": email_queue_name,
+        "PUBLIC_SERVICE_URL": public_service_url,
+        "TASK_SERVICE_ACCOUNT_EMAIL": task_service_account_email,
+        "TASKS_EXPECTED_QUEUE_NAME": _get_env(
+            "TASKS_EXPECTED_QUEUE_NAME",
+            default=email_queue_name if not _is_production() else None,
+            required_in_production=True,
+        ).strip(),
+        "TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL": _get_env(
+            "TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL",
+            default=task_service_account_email if not _is_production() else None,
+            required_in_production=True,
+        ).strip(),
+        "TASKS_EXPECTED_AUDIENCE": _get_env(
+            "TASKS_EXPECTED_AUDIENCE",
+            default=f"{public_service_url.rstrip('/')}/api/tasks/send-email" if public_service_url else "",
+            required_in_production=True,
+        ).strip(),
         "TASKS_SHARED_SECRET": _get_env("TASKS_SHARED_SECRET", "", required_in_production=True).strip(),
         "SCHEMA_FAIL_FAST_ON_STARTUP": _str_to_bool(
             os.getenv("SCHEMA_FAIL_FAST_ON_STARTUP"),

@@ -19,13 +19,23 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
 
         monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
         monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", _fake_signed_url)
+        monkeypatch.setattr(
+            "app.blueprints.tasks.routes._verify_task_oidc_token",
+            lambda token, audience: {
+                "iss": "https://accounts.google.com",
+                "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+                "email_verified": True,
+                "aud": audience,
+            },
+        )
 
         response = client.post(
             "/api/tasks/send-email",
             headers={
                 "X-CloudTasks-TaskName": "task-1",
+                "X-CloudTasks-QueueName": app.config["TASKS_EXPECTED_QUEUE_NAME"],
                 "X-Request-Id": "req-1",
-                "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+                "Authorization": "Bearer valid-token",
             },
             json={
                 "shipment_id": 44,
@@ -52,24 +62,42 @@ def test_send_email_task_route_rejects_untrusted_direct_post(client, app):
         "/api/tasks/send-email",
         headers={
             "X-CloudTasks-TaskName": "task-2",
-            "X-Tasks-Auth": "wrong-secret",
         },
         json={"shipment_id": 1, "action_type": "SHIPPER_PICKUP", "actor_user_id": 1},
     )
 
     assert response.status_code == 403
-    assert response.get_json()["error"] == "Invalid task authentication credentials."
+    assert response.get_json()["error"] == "Missing Bearer token for task request."
 
 
 def test_send_email_task_route_rejects_missing_cloud_tasks_metadata(client, app):
     response = client.post(
         "/api/tasks/send-email",
-        headers={"X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"]},
+        headers={"Authorization": "Bearer valid-token"},
         json={"shipment_id": 1, "action_type": "SHIPPER_PICKUP", "actor_user_id": 1},
     )
 
     assert response.status_code == 403
-    assert response.get_json()["error"] == "Missing required Cloud Tasks metadata."
+    assert response.get_json()["error"] == "Missing required Cloud Tasks task header."
+
+
+def test_send_email_task_route_rejects_invalid_token(client, app, monkeypatch):
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: (_ for _ in ()).throw(ValueError("bad token")),
+    )
+
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-invalid-token",
+            "Authorization": "Bearer invalid-token",
+        },
+        json={"shipment_id": 1, "action_type": "SHIPPER_PICKUP", "actor_user_id": 1},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Invalid task authentication token."
 
 
 def test_send_email_task_route_returns_retryable_error_when_send_fails(client, app, monkeypatch):
@@ -83,12 +111,21 @@ def test_send_email_task_route_returns_retryable_error_when_send_fails(client, a
 
         monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
         monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", lambda blob_name: f"https://signed/{blob_name}")
+        monkeypatch.setattr(
+            "app.blueprints.tasks.routes._verify_task_oidc_token",
+            lambda token, audience: {
+                "iss": "https://accounts.google.com",
+                "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+                "email_verified": True,
+                "aud": audience,
+            },
+        )
 
         response = client.post(
             "/api/tasks/send-email",
             headers={
                 "X-CloudTasks-TaskName": "task-3",
-                "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+                "Authorization": "Bearer valid-token",
             },
             json={
                 "shipment_id": 99,
@@ -114,6 +151,15 @@ def test_send_email_task_route_returns_retryable_error_when_url_generation_fails
         driver_id = driver.id
 
     monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", lambda **_kwargs: (True, "sent"))
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        },
+    )
 
     def _broken_signed_url(_blob_name):
         raise RuntimeError("boom")
@@ -124,7 +170,7 @@ def test_send_email_task_route_returns_retryable_error_when_url_generation_fails
         "/api/tasks/send-email",
         headers={
             "X-CloudTasks-TaskName": "task-3b",
-            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            "Authorization": "Bearer valid-token",
         },
         json={
             "shipment_id": 100,
@@ -144,12 +190,12 @@ def test_send_email_task_route_validates_payload_after_auth(client, app):
         "/api/tasks/send-email",
         headers={
             "X-CloudTasks-TaskName": "task-4",
-            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            "Authorization": "Bearer missing",
         },
         json={"shipment_id": 1},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 403
 
 
 def test_send_email_task_route_rejects_non_integer_actor_user_id(client, app, monkeypatch):
@@ -161,13 +207,22 @@ def test_send_email_task_route_rejects_non_integer_actor_user_id(client, app, mo
         return True, "sent"
 
     monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        },
+    )
 
     response = client.post(
         "/api/tasks/send-email",
         headers={
             "X-CloudTasks-TaskName": "task-5",
             "X-Request-Id": "req-5",
-            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            "Authorization": "Bearer valid-token",
         },
         json={
             "shipment_id": 1,
@@ -190,13 +245,22 @@ def test_send_email_task_route_rejects_unknown_action_type(client, app, monkeypa
         return True, "sent"
 
     monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        },
+    )
 
     response = client.post(
         "/api/tasks/send-email",
         headers={
             "X-CloudTasks-TaskName": "task-6",
             "X-Request-Id": "req-6",
-            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            "Authorization": "Bearer valid-token",
         },
         json={
             "shipment_id": 1,
@@ -216,7 +280,31 @@ def test_send_email_task_route_rejects_missing_required_fields(client, app):
         headers={
             "X-CloudTasks-TaskName": "task-7",
             "X-Request-Id": "req-7",
-            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            "Authorization": "Bearer valid-token",
+        },
+        json={"shipment_id": 1, "actor_user_id": 1},
+    )
+
+    assert response.status_code == 403
+
+
+def test_send_email_task_route_rejects_missing_required_fields_after_auth(client, app, monkeypatch):
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        },
+    )
+
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-7",
+            "X-Request-Id": "req-7",
+            "Authorization": "Bearer valid-token",
         },
         json={"shipment_id": 1, "actor_user_id": 1},
     )

@@ -28,21 +28,54 @@ def _log_task_validation_failure(reason: str, payload: dict[str, object]) -> Non
 def _validate_task_request() -> tuple[dict[str, str], int] | None:
     task_name = request.headers.get("X-CloudTasks-TaskName")
     if not task_name:
-        return jsonify({"error": "Missing required Cloud Tasks metadata."}), 403
+        return jsonify({"error": "Missing required Cloud Tasks task header."}), 403
 
-    expected_secret = (current_app.config.get("TASKS_SHARED_SECRET") or "").strip()
-    if not expected_secret:
-        current_app.logger.error("TASKS_SHARED_SECRET is not configured for send-email task endpoint.")
-        return jsonify({"error": "Task endpoint is not configured."}), 403
+    expected_queue_name = (current_app.config.get("TASKS_EXPECTED_QUEUE_NAME") or "").strip()
+    queue_name = (request.headers.get("X-CloudTasks-QueueName") or "").strip()
+    if queue_name and expected_queue_name and queue_name != expected_queue_name:
+        return jsonify({"error": "Invalid Cloud Tasks queue metadata."}), 403
 
-    provided_secret = request.headers.get("X-Tasks-Auth")
-    if not provided_secret:
-        return jsonify({"error": "Missing task authentication header."}), 401
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Missing Bearer token for task request."}), 403
 
-    if provided_secret != expected_secret:
-        return jsonify({"error": "Invalid task authentication credentials."}), 403
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        return jsonify({"error": "Missing Bearer token for task request."}), 403
+
+    expected_audience = (current_app.config.get("TASKS_EXPECTED_AUDIENCE") or "").strip()
+    if not expected_audience:
+        return jsonify({"error": "Task endpoint audience is not configured."}), 403
+
+    expected_invoker_email = (current_app.config.get("TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL") or "").strip()
+    if not expected_invoker_email:
+        return jsonify({"error": "Task endpoint invoker is not configured."}), 403
+
+    try:
+        claims = _verify_task_oidc_token(token=token, audience=expected_audience)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        current_app.logger.warning("Failed to verify Cloud Tasks OIDC token: %s", exc)
+        return jsonify({"error": "Invalid task authentication token."}), 403
+
+    issuer = str(claims.get("iss", "")).strip()
+    if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+        return jsonify({"error": "Invalid token issuer for task request."}), 403
+
+    token_email = str(claims.get("email", "")).strip().lower()
+    if token_email != expected_invoker_email.lower():
+        return jsonify({"error": "Token principal is not allowed for task request."}), 403
+
+    if claims.get("email_verified") is False:
+        return jsonify({"error": "Token email must be verified for task request."}), 403
 
     return None
+
+
+def _verify_task_oidc_token(token: str, audience: str) -> dict[str, object]:
+    from google.auth.transport.requests import Request
+    from google.oauth2 import id_token
+
+    return id_token.verify_oauth2_token(token, Request(), audience=audience)
 
 
 @tasks_bp.post("/api/tasks/send-email")
