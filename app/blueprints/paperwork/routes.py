@@ -14,8 +14,19 @@ from models import PODEvent, Role
 from app.blueprints.auth.guards import require_employee_approval
 from app.services.couchdrop import CouchdropService
 from app.services.gcs import GCSService
+from app.services.shipment_workflow import ShipmentTransitionError, apply_pod_transition, normalize_pod_action
 from models import ExpectedDelivery
-from models import LoadBoard, PODRecord, Shipment, ShipmentGroup, ShipmentLeg, ShipmentLegStatus, ShipmentStatus, ShipmentLegType
+from models import (
+    LoadBoard,
+    PODRecord,
+    Shipment,
+    ShipmentGroup,
+    ShipmentLeg,
+    ShipmentLegStatus,
+    ShipmentLegTransition,
+    ShipmentStatus,
+    ShipmentLegType,
+)
 
 paperwork_bp = Blueprint("paperwork", __name__)
 ARIZONA_TZ = ZoneInfo("America/Phoenix")
@@ -110,6 +121,8 @@ def ensure_hybrid_pod_tables() -> None:
         if "reassignment_note" not in pod_record_columns:
             db.session.execute(text("ALTER TABLE pod_records ADD COLUMN reassignment_note TEXT"))
         db.session.commit()
+    if ShipmentLegTransition.__tablename__ not in table_names:
+        ShipmentLegTransition.__table__.create(db.engine)
 
     current_app.config["HYBRID_POD_TABLES_READY"] = True
 
@@ -173,22 +186,28 @@ def get_load_entry(hwb_number: str) -> LegacyLoadView | LoadBoard | None:
     return load_view_from_shipment(shipment)
 
 
-def set_load_status(load_entry: LegacyLoadView | LoadBoard, action_type: str) -> None:
-    next_status = "Picked Up" if action_type == "Pickup" else "Delivered"
+def set_load_status(load_entry: LegacyLoadView | LoadBoard, action_type: str, latitude: str | None = None, longitude: str | None = None) -> None:
+    canonical_action = normalize_pod_action(action_type)
+    next_status_by_action = {
+        "SHIPPER_PICKUP": "In Progress",
+        "ORIGIN_AIRPORT_DROP": "Picked Up",
+        "DESTINATION_AIRPORT_PICKUP": "In Progress",
+        "CONSIGNEE_DROP": "Delivered",
+    }
+    next_status = next_status_by_action[canonical_action]
     if isinstance(load_entry, LoadBoard):
         load_entry.status = next_status
         return
 
     if not load_entry.shipment:
         return
-
-    shipment = load_entry.shipment
-    shipment.overall_status = ShipmentStatus.PICKED_UP if action_type == "Pickup" else ShipmentStatus.DELIVERED
-    active_leg = _shipment_current_leg(shipment)
-    if active_leg:
-        active_leg.status = ShipmentLegStatus.COMPLETED
-    if action_type == "Delivery":
-        shipment.current_leg_index = max(shipment.current_leg_index, 2)
+    apply_pod_transition(
+        shipment=load_entry.shipment,
+        action_type=canonical_action,
+        actor_user_id=g.current_user.id,
+        latitude=latitude,
+        longitude=longitude,
+    )
 
 
 def assign_load_to_current_driver(load_entry: LegacyLoadView | LoadBoard) -> None:
@@ -240,8 +259,8 @@ def submit_pod(
     reassignment_note: str | None,
 ) -> None:
     """Persist POD data in hybrid mode and keep legacy POD event logging."""
-    if action_type not in {"Pickup", "Delivery"}:
-        raise ValueError("Invalid action type.")
+    canonical_action = normalize_pod_action(action_type)
+    action_folder = canonical_action.lower()
     if not pod_photo or not getattr(pod_photo, "filename", ""):
         raise ValueError("POD photo is required.")
     if not signature_file:
@@ -255,8 +274,8 @@ def submit_pod(
     if is_off_sheet and not off_sheet_confirmed:
         raise ValueError("Off-sheet completion requires confirmation.")
 
-    photo_uri = GCSService.upload_file(pod_photo, folder=f"pod_photos/{action_type.lower()}")
-    sig_uri = GCSService.upload_file(signature_file, folder=f"signatures/{action_type.lower()}")
+    photo_uri = GCSService.upload_file(pod_photo, folder=f"pod_photos/{action_folder}")
+    sig_uri = GCSService.upload_file(signature_file, folder=f"signatures/{action_folder}")
     if not photo_uri or not sig_uri:
         raise ValueError("Failed to upload POD assets.")
 
@@ -276,7 +295,7 @@ def submit_pod(
         signature_image=sig_uri,
         recipient_name=recipient_name,
         driver_id=g.current_user.id,
-        action_type=action_type,
+        action_type=canonical_action,
         off_sheet_confirmed=off_sheet_confirmed,
         reassignment_note=persisted_reassignment_note,
     )
@@ -287,7 +306,7 @@ def submit_pod(
         pod_record.consignee = load_board_entry.consignee
         pod_record.contact_name = load_board_entry.contact_name
         pod_record.phone = load_board_entry.phone
-        set_load_status(load_board_entry, action_type)
+        set_load_status(load_board_entry, canonical_action, latitude=latitude, longitude=longitude)
     else:
         # Path B: manual POD
         pod_record.shipper = shipper
@@ -301,7 +320,7 @@ def submit_pod(
     legacy_event = PODEvent(
         user_id=g.current_user.id,
         reference_id=hwb_number,
-        event_type=action_type.upper(),
+        event_type=canonical_action,
         latitude=latitude if latitude else None,
         longitude=longitude if longitude else None,
         signature_url=sig_uri,
@@ -388,7 +407,18 @@ def log_pod_event():
             reassignment_note=reassignment_note,
         )
         db.session.commit()
-
+    except ShipmentTransitionError as e:
+        db.session.rollback()
+        if is_ajax:
+            return jsonify({"error": str(e)}), 400
+        flash(str(e))
+        return redirect(url_for("paperwork.log_pod_event"))
+    except ValueError as e:
+        db.session.rollback()
+        if is_ajax:
+            return jsonify({"error": str(e)}), 400
+        flash(str(e))
+        return redirect(url_for("paperwork.log_pod_event"))
     except Exception as e:
         db.session.rollback()
         if is_ajax: return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
