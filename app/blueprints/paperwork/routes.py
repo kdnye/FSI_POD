@@ -681,7 +681,8 @@ def upload_load_board_csv():
         consignee_address = build_address(row, "Consignee Name", ["Consignee Address 1", "C-City", "C-State", "C-Zip"])
         origin_airport = (row.get("Org") or "").strip().upper()
         destination_airport = (row.get("Dest") or "").strip().upper()
-        status = (row.get("status") or "Pending").strip() or "Pending"
+        raw_status = row.get("Status") or row.get("status")
+        status = raw_status.strip() if raw_status and raw_status.strip() else "Awaiting Pickup"
 
         if not mawb_number:
             row_issue_list.append("mawb_number is required")
@@ -784,6 +785,7 @@ def upload_load_board_csv():
                         "Delivered": ShipmentStatus.DELIVERED,
                         "Picked Up": ShipmentStatus.PICKED_UP,
                         "In Progress": ShipmentStatus.IN_PROGRESS,
+                        "Awaiting Pickup": ShipmentStatus.PENDING,
                     }.get(parsed_row["status"], ShipmentStatus.PENDING)
 
                     if not shipment.legs:
@@ -834,7 +836,7 @@ def upload_load_board_csv():
                         entry.consignee = parsed_row["consignee_address"]
                         entry.contact_name = "CSV Import"
                         entry.phone = "N/A"
-                        entry.assigned_driver = parsed_row["first_mile_driver_id"] or parsed_row["last_mile_driver_id"]
+                        entry.assigned_driver = parsed_row["first_mile_driver_id"]
                         entry.status = parsed_row["status"]
 
                     upserted_count += 1

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 
 from app import db
-from models import LoadBoard, PODRecord, Role, Shipment, ShipmentGroup, ShipmentLeg, User
+from models import LoadBoard, PODRecord, Role, Shipment, ShipmentGroup, ShipmentLeg, ShipmentStatus, User
 
 
 def _create_user(email: str, role: Role, employee_approved: bool = True) -> int:
@@ -646,3 +646,52 @@ def test_upload_load_board_csv_creates_group_shipment_and_default_legs(client, a
         assert legs[2].assigned_driver_id == 22
     finally:
         app.config["LOAD_BOARD_USE_SHIPMENTS"] = False
+
+
+def test_upload_load_board_csv_defaults_status_and_uses_pickup_driver_only(client):
+    admin_id = _create_user("admin-status-default@example.com", role=Role.ADMIN)
+    _login(client, admin_id)
+
+    pickup_driver = User(
+        email="pickup-driver@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+        first_name="Pick",
+        last_name="Driver",
+    )
+    delivery_driver = User(
+        email="delivery-driver@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+        first_name="Drop",
+        last_name="Driver",
+    )
+    db.session.add_all([pickup_driver, delivery_driver])
+    db.session.commit()
+
+    csv_payload = (
+        "Mawb#,HWB,Shipper Name,Shipper Address1,S-City,S-State,S-Zip,Consignee Name,Consignee Address 1,C-City,C-State,C-Zip,Org,Dest,P/U Driver Name,Del Driver Name,Status\n"
+        "MAWB-400,HWB-400,Acme,123 Main,PHX,AZ,85001,Receiver,987 Oak,LAX,CA,90001,PHX,LAX,,Drop Driver,\n"
+    )
+
+    response = client.post(
+        "/load-board/upload-csv",
+        data={"load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+
+    shipment = Shipment.query.filter_by(hwb_number="HWB-400").first()
+    assert shipment is not None
+    assert shipment.overall_status == ShipmentStatus.PENDING
+
+    entry = db.session.get(LoadBoard, "HWB-400")
+    assert entry is not None
+    assert entry.status == "Awaiting Pickup"
+    assert entry.assigned_driver is None
