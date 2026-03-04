@@ -53,11 +53,18 @@ def send_shipment_alert(
     action = str(action_type or "").strip().upper()
     setting_name = _ACTION_TO_SETTING.get(action)
     if not setting_name:
-        return False
+        current_app.logger.warning("Shipment alert skipped: unsupported action_type=%s hwb_number=%s", action_type, hwb_number)
+        return False, "unsupported_action_type"
 
     settings = NotificationSettings.query.first()
     if settings is None or not getattr(settings, setting_name, False):
-        return False
+        current_app.logger.warning(
+            "Shipment alert skipped: notifications disabled action_type=%s hwb_number=%s setting=%s",
+            action,
+            hwb_number,
+            setting_name,
+        )
+        return False, "disabled_settings"
 
     recipients: list[str] = []
     for email in [driver_email, shipper_email, consignee_email, *_parse_custom_cc_emails(settings.custom_cc_emails)]:
@@ -74,13 +81,22 @@ def send_shipment_alert(
         deduped.append(email)
 
     if not deduped:
-        return False
+        current_app.logger.warning(
+            "Shipment alert skipped: no valid recipients action_type=%s hwb_number=%s",
+            action,
+            hwb_number,
+        )
+        return False, "missing_recipients"
 
     postmark_token = current_app.config.get("POSTMARK_SERVER_TOKEN", "").strip()
     from_email = current_app.config.get("POSTMARK_FROM_EMAIL", "").strip()
     if not postmark_token or not from_email:
-        current_app.logger.warning("Skipping shipment alert: Postmark credentials are missing.")
-        return False
+        current_app.logger.error(
+            "Shipment alert failed: missing Postmark credentials/config action_type=%s hwb_number=%s",
+            action,
+            hwb_number,
+        )
+        return False, "credential_or_config_issue"
 
     payload = {
         "From": from_email,
@@ -111,7 +127,12 @@ def send_shipment_alert(
         )
         response.raise_for_status()
     except requests.RequestException as exc:
-        current_app.logger.exception("Failed to send Postmark shipment alert for %s: %s", hwb_number, exc)
-        return False
+        current_app.logger.exception(
+            "Shipment alert failed: Postmark request exception action_type=%s hwb_number=%s error=%s",
+            action,
+            hwb_number,
+            exc,
+        )
+        return False, "credential_or_config_issue"
 
-    return True
+    return True, "sent"
