@@ -84,4 +84,5 @@ def get_runtime_config() -> dict:
         "PORT": int(os.getenv("PORT", "8080")),
         "SESSION_COOKIE_SECURE": _str_to_bool(os.getenv("SESSION_COOKIE_SECURE"), default=_is_production()),
         "REMEMBER_COOKIE_SECURE": _str_to_bool(os.getenv("REMEMBER_COOKIE_SECURE"), default=_is_production()),
+        "LOAD_BOARD_USE_SHIPMENTS": _str_to_bool(os.getenv("LOAD_BOARD_USE_SHIPMENTS"), default=False),
     }
