@@ -107,3 +107,76 @@ def test_send_email_task_route_validates_payload_after_auth(client, app):
     )
 
     assert response.status_code == 400
+
+
+def test_send_email_task_route_rejects_non_integer_actor_user_id(client, app, monkeypatch):
+    called = False
+
+    def _fake_send(**_kwargs):
+        nonlocal called
+        called = True
+        return True, "sent"
+
+    monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-5",
+            "X-Request-Id": "req-5",
+            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+        },
+        json={
+            "shipment_id": 1,
+            "action_type": "SHIPPER_PICKUP",
+            "actor_user_id": "abc",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid actor_user_id for email task."
+    assert called is False
+
+
+def test_send_email_task_route_rejects_unknown_action_type(client, app, monkeypatch):
+    called = False
+
+    def _fake_send(**_kwargs):
+        nonlocal called
+        called = True
+        return True, "sent"
+
+    monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-6",
+            "X-Request-Id": "req-6",
+            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+        },
+        json={
+            "shipment_id": 1,
+            "action_type": "NOT_A_REAL_ACTION",
+            "actor_user_id": 1,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid action_type for email task."
+    assert called is False
+
+
+def test_send_email_task_route_rejects_missing_required_fields(client, app):
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-7",
+            "X-Request-Id": "req-7",
+            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+        },
+        json={"shipment_id": 1, "actor_user_id": 1},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Missing required task payload fields."
