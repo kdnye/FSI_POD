@@ -326,6 +326,33 @@ def query_loads(full_board_access: bool, include_delivered: bool = True, include
     return views
 
 
+def resolve_pod_shipment_context(
+    hwb_number: str,
+    load_board_entry: LegacyLoadView | LoadBoard | None,
+) -> tuple[int | None, int | None, int | None, str | None, str]:
+    """Resolve shipment/leg metadata for POD history rows when available."""
+    shipment = None
+    target_hwb_number = hwb_number
+
+    if load_board_entry:
+        target_hwb_number = load_board_entry.hwb_number
+
+    if isinstance(load_board_entry, LegacyLoadView) and load_board_entry.shipment:
+        shipment = load_board_entry.shipment
+    elif target_hwb_number:
+        shipment = Shipment.query.filter_by(hwb_number=target_hwb_number).first()
+
+    if not shipment:
+        return None, None, None, None, target_hwb_number
+
+    active_leg = _shipment_current_leg(shipment)
+    if not active_leg:
+        return shipment.id, None, None, None, shipment.hwb_number
+
+    leg_type = active_leg.leg_type.value if hasattr(active_leg.leg_type, "value") else str(active_leg.leg_type)
+    return shipment.id, active_leg.id, active_leg.leg_sequence, leg_type, shipment.hwb_number
+
+
 def submit_pod(
     *,
     hwb_number: str,
@@ -387,21 +414,10 @@ def submit_pod(
 
     entries_to_process = target_load_entries or [None]
     for load_board_entry in entries_to_process:
-        shipment_id = None
-        leg_id = None
-        leg_sequence = None
-        leg_type = None
-        target_hwb_number = hwb_number
-        if load_board_entry and isinstance(load_board_entry, LegacyLoadView) and load_board_entry.shipment:
-            active_leg = _shipment_current_leg(load_board_entry.shipment)
-            shipment_id = load_board_entry.shipment.id
-            target_hwb_number = load_board_entry.shipment.hwb_number
-            if active_leg:
-                leg_id = active_leg.id
-                leg_sequence = active_leg.leg_sequence
-                leg_type = active_leg.leg_type.value if hasattr(active_leg.leg_type, "value") else str(active_leg.leg_type)
-        elif load_board_entry:
-            target_hwb_number = load_board_entry.hwb_number
+        shipment_id, leg_id, leg_sequence, leg_type, target_hwb_number = resolve_pod_shipment_context(
+            hwb_number,
+            load_board_entry,
+        )
 
         pod_record = PODRecord(
             hwb_number=target_hwb_number,
