@@ -169,27 +169,46 @@ def _legacy_status_label(status: ShipmentStatus | str | None) -> str:
 
 
 def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
-    active_leg = _shipment_current_leg(shipment)
-    
-    # 1. Identify the specific agents for the hand-off
+    # 1. Identify specific legs
     leg1 = next((l for l in shipment.legs if l.leg_sequence == 1), None)
     leg3 = next((l for l in shipment.legs if l.leg_sequence == 3), None)
-    
-    # 2. Logic: If pickup (Leg 1) is done, show the Delivery Agent (Leg 3)
-    display_driver_id = active_leg.assigned_driver_id if active_leg else None
-    
-    if leg1 and leg1.status == ShipmentLegStatus.COMPLETED:
-        if leg3:
-            display_driver_id = leg3.assigned_driver_id
 
-    # ... (existing stage_label logic) ...
+    # 2. Logic: Show Pickup Driver until they finish Leg 1, then show Delivery Driver
+    display_driver_id = None
+    if leg1 and leg1.status != ShipmentLegStatus.COMPLETED:
+        display_driver_id = leg1.assigned_driver_id
+    elif leg3:
+        display_driver_id = leg3.assigned_driver_id
+    else:
+        # Fallback to current active leg pointer if sequence 1 and 3 aren't found
+        active_leg = _shipment_current_leg(shipment)
+        display_driver_id = active_leg.assigned_driver_id if active_leg else None
+
+    # UI Stage Labels
+    stage_label = "Awaiting Pickup"
+    stage_class = "status-awaiting-pickup"
+
+    if shipment.overall_status == ShipmentStatus.PICKED_UP:
+        stage_label = "At Origin Airport"
+        stage_class = "status-picked-up"
+    elif shipment.overall_status == ShipmentStatus.IN_PROGRESS:
+        stage_label = "Out for Delivery"
+        stage_class = "status-in-progress"
+    elif shipment.overall_status == ShipmentStatus.DELIVERED:
+        stage_label = "Delivered"
+        stage_class = "status-delivered"
 
     return LegacyLoadView(
         hwb_number=shipment.hwb_number,
-        # ...
-        assigned_driver=display_driver_id,  # Uses the hand-off logic
+        shipper=shipment.shipper_address or "N/A",
+        consignee=shipment.consignee_address or "N/A",
+        contact_name="System",
+        phone="N/A",
+        assigned_driver=display_driver_id,
         status=_legacy_status_label(shipment.overall_status),
-        # ...
+        shipment=shipment,
+        stage_label=stage_label,
+        stage_class=stage_class,
     )
 
 def get_load_entry(hwb_number: str) -> LegacyLoadView | LoadBoard | None:
@@ -797,16 +816,19 @@ def upload_load_board_csv():
             return ", ".join([name_value, *extra_parts] if name_value else extra_parts)
         return name_value
 
+    # Index active drivers by name and email for faster lookup
     all_drivers = User.query.filter_by(is_active=True).all()
     driver_map: dict[str, int] = {}
     for driver in all_drivers:
-        candidate_names = {
-            (driver.name or "").strip().lower(),
-            " ".join(part for part in [driver.first_name, driver.last_name] if part).strip().lower(),
-        }
-        for candidate in candidate_names:
-            if candidate:
-                driver_map[candidate] = driver.id
+        # Map by standard name
+        name_key = (driver.name or "").strip().lower()
+        if name_key:
+            driver_map[name_key] = driver.id
+
+        # Map by email (standardized company format)
+        email_key = (driver.email or "").strip().lower()
+        if email_key:
+            driver_map[email_key] = driver.id
 
     def resolve_driver_id(driver_name_raw: str | None) -> int | None:
         if not driver_name_raw:
@@ -814,7 +836,18 @@ def upload_load_board_csv():
         cleaned_name = str(driver_name_raw).strip().lower()
         if not cleaned_name:
             return None
-        return driver_map.get(cleaned_name)
+
+        # Try 1: Direct name match (e.g., "mickey jadallah")
+        if cleaned_name in driver_map:
+            return driver_map[cleaned_name]
+
+        # Try 2: Convert name to company email format (e.g., "david alexander" -> "david.alexander@freightservices.net")
+        # Handles middle initials by replacing all spaces with dots
+        email_format = cleaned_name.replace(" ", ".") + "@freightservices.net"
+        if email_format in driver_map:
+            return driver_map[email_format]
+
+        return None
 
     def map_legacy_status_to_leg_state(legacy_status: str) -> dict:
         normalized_status = (legacy_status or "").strip()
@@ -881,8 +914,8 @@ def upload_load_board_csv():
         elif hwb_number:
             seen_hwb_numbers.add(hwb_number)
 
-        first_mile_driver = resolve_driver_id(row.get("P/U Agent Name"))
-        last_mile_driver = resolve_driver_id(row.get("Del agent Name"))
+        first_mile_driver = resolve_driver_id(row.get("P/U Agent name"))
+        last_mile_driver = resolve_driver_id(row.get("DEL agent name"))
 
         if row_issue_list:
             row_errors.append(f"Row {index}: {'; '.join(row_issue_list)}")
