@@ -275,6 +275,62 @@ def test_pod_history_includes_links_to_photo_and_signature(client):
     assert b'href="https://storage.googleapis.com/bucket/signature.png"' in response.data
 
 
+def test_pod_history_shows_zebra_rows_and_shipment_metadata_in_legacy_mode(client, app, monkeypatch):
+    driver_id = _create_user("pod-history-metadata@example.com")
+    _login(client, driver_id)
+    app.config["LOAD_BOARD_USE_SHIPMENTS"] = False
+
+    group = ShipmentGroup(mawb_number="MAWB-POD-META", carrier="TEST")
+    db.session.add(group)
+    db.session.flush()
+    shipment = Shipment(hwb_number="HWB-POD-META", shipment_group_id=group.id)
+    db.session.add(shipment)
+    db.session.flush()
+    leg = ShipmentLeg(
+        shipment_id=shipment.id,
+        leg_sequence=1,
+        leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
+        status=ShipmentLegStatus.ASSIGNED,
+        assigned_driver_id=driver_id,
+    )
+    db.session.add(leg)
+    db.session.add(
+        LoadBoard(
+            hwb_number="HWB-POD-META",
+            shipper="Meta Shipper",
+            consignee="Meta Consignee",
+            contact_name="Meta Contact",
+            phone="555-9898",
+            assigned_driver=driver_id,
+            status="Pending",
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("app.services.gcs.GCSService.upload_file", lambda *_args, **_kwargs: "gs://test/path")
+    response = client.post(
+        "/pod/event",
+        data=_pod_form_payload("HWB-POD-META", action_type="shipper pickup", latitude="33.45", longitude="-112.07"),
+        headers={"Accept": "application/json"},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+
+    pod_record = PODRecord.query.filter_by(hwb_number="HWB-POD-META").one()
+    assert pod_record.shipment_id == shipment.id
+    assert pod_record.leg_id == leg.id
+    assert pod_record.leg_sequence == 1
+    assert pod_record.leg_type == ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT.value
+    assert pod_record.latitude == "33.45"
+    assert pod_record.longitude == "-112.07"
+
+    history_response = client.get("/pod/history")
+    assert history_response.status_code == 200
+    assert b"fsi-table fsi-load-board-table" in history_response.data
+    assert b"33.45, -112.07" in history_response.data
+    assert f"#{leg.id} / Seq 1 / {ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT.value}".encode() in history_response.data
+
+
 def test_pod_asset_route_serves_files_from_mount(client, monkeypatch):
     driver_id = _create_user("pod-asset-route@example.com")
     _login(client, driver_id)

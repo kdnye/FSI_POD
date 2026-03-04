@@ -92,16 +92,25 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     function captureLocation() {
-        if (navigator.geolocation) {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve();
+                return;
+            }
+
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     document.getElementById('latitude').value = position.coords.latitude;
                     document.getElementById('longitude').value = position.coords.longitude;
+                    resolve();
                 },
-                (error) => { console.warn("GPS capture failed: ", error.message); },
+                (error) => {
+                    console.warn("GPS capture failed: ", error.message);
+                    resolve();
+                },
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
-        }
+        });
     }
 
     const summaryShell = document.getElementById('load-board-summary');
@@ -216,7 +225,7 @@ document.addEventListener("DOMContentLoaded", function() {
     html5QrcodeScanner.render(async (decodedText) => {
         document.getElementById('hwb_number').value = decodedText;
         html5QrcodeScanner.clear();
-        captureLocation();
+        await captureLocation();
         await lookupHwb();
     }, () => {});
 
@@ -255,7 +264,7 @@ document.addEventListener("DOMContentLoaded", function() {
         submitBtn.disabled = true;
         statusDiv.innerText = "Submitting event data...";
 
-        if (!document.getElementById('latitude').value) captureLocation();
+        if (!document.getElementById('latitude').value) await captureLocation();
 
         const formData = new FormData(this);
         formData.append('signature_base64', signaturePad.toDataURL("image/png"));
