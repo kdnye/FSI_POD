@@ -18,8 +18,9 @@ ACTION_ALIASES = {
     "SHIPPER_PICKUP": "SHIPPER_PICKUP",
     "ORIGIN AIRPORT DROP": "ORIGIN_AIRPORT_DROP",
     "ORIGIN_AIRPORT_DROP": "ORIGIN_AIRPORT_DROP",
-    "DESTINATION AIRPORT PICKUP": "DESTINATION_AIRPORT_PICKUP",
-    "DESTINATION_AIRPORT_PICKUP": "DESTINATION_AIRPORT_PICKUP",
+    "DESTINATION AIRPORT PICKUP": "DEST_AIRPORT_PICKUP",
+    "DESTINATION_AIRPORT_PICKUP": "DEST_AIRPORT_PICKUP",
+    "DEST_AIRPORT_PICKUP": "DEST_AIRPORT_PICKUP",
     "CONSIGNEE DROP": "CONSIGNEE_DROP",
     "CONSIGNEE_DROP": "CONSIGNEE_DROP",
 }
@@ -67,7 +68,7 @@ def _resolve_location_name(action: str, leg1: ShipmentLeg | None, leg3: Shipment
         return leg1.from_address or leg1.to_address
     if action == "ORIGIN_AIRPORT_DROP" and leg1:
         return leg1.to_address or leg1.from_address
-    if action == "DESTINATION_AIRPORT_PICKUP" and leg3:
+    if action == "DEST_AIRPORT_PICKUP" and leg3:
         return leg3.from_address or leg3.to_address
     if action == "CONSIGNEE_DROP" and leg3:
         return leg3.to_address or leg3.from_address
@@ -185,7 +186,7 @@ def apply_pod_transition(
         )
         return action
 
-    if action == "DESTINATION_AIRPORT_PICKUP":
+    if action == "DEST_AIRPORT_PICKUP":
         if not leg1 or leg1.status != ShipmentLegStatus.COMPLETED:
             raise ShipmentTransitionError("Cannot mark destination-airport pickup before origin-airport drop.")
         if not leg3:

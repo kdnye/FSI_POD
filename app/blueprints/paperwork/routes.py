@@ -255,7 +255,7 @@ def set_load_status(
     next_status_by_action = {
         "SHIPPER_PICKUP": "In Progress",
         "ORIGIN_AIRPORT_DROP": "Picked Up",
-        "DESTINATION_AIRPORT_PICKUP": "In Progress",
+        "DEST_AIRPORT_PICKUP": "In Progress",
         "CONSIGNEE_DROP": "Delivered",
     }
     next_status = next_status_by_action[canonical_action]
