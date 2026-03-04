@@ -85,4 +85,6 @@ def get_runtime_config() -> dict:
         "SESSION_COOKIE_SECURE": _str_to_bool(os.getenv("SESSION_COOKIE_SECURE"), default=_is_production()),
         "REMEMBER_COOKIE_SECURE": _str_to_bool(os.getenv("REMEMBER_COOKIE_SECURE"), default=_is_production()),
         "LOAD_BOARD_USE_SHIPMENTS": _str_to_bool(os.getenv("LOAD_BOARD_USE_SHIPMENTS"), default=False),
+        "POSTMARK_SERVER_TOKEN": _get_env("POSTMARK_SERVER_TOKEN", "").strip(),
+        "POSTMARK_FROM_EMAIL": _get_env("POSTMARK_FROM_EMAIL", "").strip(),
     }

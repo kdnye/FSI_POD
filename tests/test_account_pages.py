@@ -1,5 +1,5 @@
 from app import db
-from models import Role, User
+from models import NotificationSettings, Role, User
 
 
 def _create_session_user(client, email="account@example.com"):
@@ -154,3 +154,38 @@ def test_admin_users_table_renders_ops_column_and_checkbox(client):
     assert response.status_code == 200
     assert b"<th>Ops</th>" in response.data
     assert b'name="is_ops"' in response.data
+
+
+def test_admin_notifications_page_requires_admin_role(client):
+    _create_session_user(client, email="employee-notify@example.com")
+
+    response = client.get("/account/admin/notifications", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/pod/event")
+
+
+def test_admin_notifications_page_persists_settings(client):
+    admin = _create_session_user(client, email="admin-notify@example.com")
+    admin.role = Role.ADMIN.value
+    db.session.commit()
+
+    response = client.post(
+        "/account/admin/notifications",
+        data={
+            "notify_shipper_pickup": "on",
+            "notify_origin_drop": "on",
+            "custom_cc_emails": "ops@example.com, qa@example.com",
+        },
+        follow_redirects=False,
+    )
+
+    settings = NotificationSettings.query.one()
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/account/admin/notifications")
+    assert settings.notify_shipper_pickup is True
+    assert settings.notify_origin_drop is True
+    assert settings.notify_dest_pickup is False
+    assert settings.notify_consignee_drop is False
+    assert settings.custom_cc_emails == "ops@example.com, qa@example.com"
