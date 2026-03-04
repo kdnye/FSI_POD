@@ -3,6 +3,7 @@ import csv
 import base64
 import uuid
 from io import BytesIO, StringIO
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from werkzeug.datastructures import FileStorage
@@ -13,9 +14,8 @@ from models import PODEvent, Role
 from app.blueprints.auth.guards import require_employee_approval
 from app.services.couchdrop import CouchdropService
 from app.services.gcs import GCSService
-from sqlalchemy.orm import aliased
 from models import ExpectedDelivery
-from models import LoadBoard, PODRecord
+from models import LoadBoard, PODRecord, Shipment, ShipmentGroup, ShipmentLeg, ShipmentLegStatus, ShipmentStatus, ShipmentLegType
 
 paperwork_bp = Blueprint("paperwork", __name__)
 ARIZONA_TZ = ZoneInfo("America/Phoenix")
@@ -114,6 +114,115 @@ def ensure_hybrid_pod_tables() -> None:
     current_app.config["HYBRID_POD_TABLES_READY"] = True
 
 
+@dataclass
+class LegacyLoadView:
+    hwb_number: str
+    shipper: str
+    consignee: str
+    contact_name: str
+    phone: str
+    assigned_driver: int | None
+    status: str
+    shipment: Shipment | None = None
+
+
+def use_shipments_for_load_board() -> bool:
+    return bool(current_app.config.get("LOAD_BOARD_USE_SHIPMENTS", False))
+
+
+def _shipment_current_leg(shipment: Shipment) -> ShipmentLeg | None:
+    for leg in shipment.legs:
+        if leg.leg_sequence == shipment.current_leg_index:
+            return leg
+    return shipment.legs[0] if shipment.legs else None
+
+
+def _legacy_status_label(status: ShipmentStatus | str | None) -> str:
+    raw = status.value if hasattr(status, "value") else str(status or "")
+    mapping = {
+        "PENDING": "Pending",
+        "IN_PROGRESS": "In Progress",
+        "PICKED_UP": "Picked Up",
+        "DELIVERED": "Delivered",
+        "CANCELLED": "Cancelled",
+    }
+    return mapping.get(raw, raw.title() if raw else "Pending")
+
+
+def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
+    active_leg = _shipment_current_leg(shipment)
+    return LegacyLoadView(
+        hwb_number=shipment.hwb_number,
+        shipper=shipment.shipper_address or "",
+        consignee=shipment.consignee_address or "",
+        contact_name="",
+        phone="",
+        assigned_driver=active_leg.assigned_driver_id if active_leg else None,
+        status=_legacy_status_label(shipment.overall_status),
+        shipment=shipment,
+    )
+
+
+def get_load_entry(hwb_number: str) -> LegacyLoadView | LoadBoard | None:
+    if not use_shipments_for_load_board():
+        return db.session.get(LoadBoard, hwb_number)
+
+    shipment = Shipment.query.filter_by(hwb_number=hwb_number).first()
+    if not shipment:
+        return None
+    return load_view_from_shipment(shipment)
+
+
+def set_load_status(load_entry: LegacyLoadView | LoadBoard, action_type: str) -> None:
+    next_status = "Picked Up" if action_type == "Pickup" else "Delivered"
+    if isinstance(load_entry, LoadBoard):
+        load_entry.status = next_status
+        return
+
+    if not load_entry.shipment:
+        return
+
+    shipment = load_entry.shipment
+    shipment.overall_status = ShipmentStatus.PICKED_UP if action_type == "Pickup" else ShipmentStatus.DELIVERED
+    active_leg = _shipment_current_leg(shipment)
+    if active_leg:
+        active_leg.status = ShipmentLegStatus.COMPLETED
+    if action_type == "Delivery":
+        shipment.current_leg_index = max(shipment.current_leg_index, 2)
+
+
+def assign_load_to_current_driver(load_entry: LegacyLoadView | LoadBoard) -> None:
+    if isinstance(load_entry, LoadBoard):
+        load_entry.assigned_driver = g.current_user.id
+        return
+
+    if not load_entry.shipment:
+        return
+
+    active_leg = _shipment_current_leg(load_entry.shipment)
+    if active_leg:
+        active_leg.assigned_driver_id = g.current_user.id
+        if active_leg.status in {ShipmentLegStatus.PENDING, ShipmentLegStatus.ASSIGNED}:
+            active_leg.status = ShipmentLegStatus.ASSIGNED
+
+
+def query_loads(full_board_access: bool):
+    if not use_shipments_for_load_board():
+        load_query = LoadBoard.query
+        if not full_board_access:
+            load_query = load_query.filter_by(assigned_driver=g.current_user.id)
+        return load_query.order_by(LoadBoard.hwb_number.asc()).all()
+
+    shipment_query = Shipment.query.order_by(Shipment.hwb_number.asc())
+    shipments = shipment_query.all()
+    views = []
+    for shipment in shipments:
+        view = load_view_from_shipment(shipment)
+        if full_board_access or view.assigned_driver == g.current_user.id:
+            views.append(view)
+    return views
+
+
 def submit_pod(
     *,
     hwb_number: str,
@@ -138,7 +247,7 @@ def submit_pod(
     if not signature_file:
         raise ValueError("Signature image is required.")
 
-    load_board_entry = db.session.get(LoadBoard, hwb_number)
+    load_board_entry = get_load_entry(hwb_number)
     user_has_full_board_rights = is_ops_or_admin_user()
     is_assigned_to_current_user = bool(load_board_entry and load_board_entry.assigned_driver == g.current_user.id)
     is_off_sheet = bool(load_board_entry and not user_has_full_board_rights and not is_assigned_to_current_user)
@@ -159,7 +268,7 @@ def submit_pod(
             f"{load_board_entry.assigned_driver if load_board_entry.assigned_driver is not None else 'unassigned'} "
             f"to {g.current_user.id}.{note_suffix}"
         )
-        load_board_entry.assigned_driver = g.current_user.id
+        assign_load_to_current_driver(load_board_entry)
 
     pod_record = PODRecord(
         hwb_number=hwb_number,
@@ -178,7 +287,7 @@ def submit_pod(
         pod_record.consignee = load_board_entry.consignee
         pod_record.contact_name = load_board_entry.contact_name
         pod_record.phone = load_board_entry.phone
-        load_board_entry.status = "Picked Up" if action_type == "Pickup" else "Delivered"
+        set_load_status(load_board_entry, action_type)
     else:
         # Path B: manual POD
         pod_record.shipper = shipper
@@ -302,7 +411,7 @@ def scan_hwb():
     if not hwb_number:
         return jsonify({"error": "HWB number is required."}), 400
 
-    load_board_entry = db.session.get(LoadBoard, hwb_number)
+    load_board_entry = get_load_entry(hwb_number)
     if not load_board_entry:
         return jsonify(
             {
@@ -347,11 +456,7 @@ def scan_hwb():
 def active_load_board():
     ensure_hybrid_pod_tables()
     full_board_access = is_ops_or_admin_user()
-    load_query = LoadBoard.query
-    if not full_board_access:
-        load_query = load_query.filter_by(assigned_driver=g.current_user.id)
-
-    loads = load_query.order_by(LoadBoard.hwb_number.asc()).all()
+    loads = query_loads(full_board_access)
 
     latest_delivery_by_hwb: dict[str, PODRecord] = {}
     load_hwbs = [load.hwb_number for load in loads if load.hwb_number]
@@ -429,17 +534,49 @@ def upload_load_board_csv():
         except ValueError:
             continue
 
-        entry = db.session.get(LoadBoard, hwb_number)
-        if not entry:
-            entry = LoadBoard(hwb_number=hwb_number)
-            db.session.add(entry)
+        if use_shipments_for_load_board():
+            shipment = Shipment.query.filter_by(hwb_number=hwb_number).first()
+            if not shipment:
+                legacy_group = ShipmentGroup.query.filter_by(mawb_number="LEGACY-LOAD-BOARD").first()
+                if not legacy_group:
+                    legacy_group = ShipmentGroup(mawb_number="LEGACY-LOAD-BOARD", carrier="LEGACY")
+                    db.session.add(legacy_group)
+                    db.session.flush()
+                shipment = Shipment(hwb_number=hwb_number, shipment_group_id=legacy_group.id)
+                db.session.add(shipment)
+                db.session.flush()
+                db.session.add(ShipmentLeg(
+                    shipment_id=shipment.id,
+                    leg_sequence=1,
+                    leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
+                    from_location_type="SHIPPER",
+                    to_location_type="ORIGIN_AIRPORT",
+                    assigned_driver_id=assigned_driver,
+                    status=ShipmentLegStatus.ASSIGNED,
+                ))
+            shipment.shipper_address = shipper
+            shipment.consignee_address = consignee
+            shipment.overall_status = {
+                "Delivered": ShipmentStatus.DELIVERED,
+                "Picked Up": ShipmentStatus.PICKED_UP,
+                "In Progress": ShipmentStatus.IN_PROGRESS,
+            }.get(status, ShipmentStatus.PENDING)
+            active_leg = _shipment_current_leg(shipment)
+            if active_leg:
+                active_leg.assigned_driver_id = assigned_driver
+                active_leg.status = ShipmentLegStatus.ASSIGNED
+        else:
+            entry = db.session.get(LoadBoard, hwb_number)
+            if not entry:
+                entry = LoadBoard(hwb_number=hwb_number)
+                db.session.add(entry)
 
-        entry.shipper = shipper
-        entry.consignee = consignee
-        entry.contact_name = contact_name
-        entry.phone = phone
-        entry.assigned_driver = assigned_driver
-        entry.status = status
+            entry.shipper = shipper
+            entry.consignee = consignee
+            entry.contact_name = contact_name
+            entry.phone = phone
+            entry.assigned_driver = assigned_driver
+            entry.status = status
         upserted_count += 1
 
     db.session.commit()
