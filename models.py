@@ -292,7 +292,7 @@ class PODRecord(db.Model):
     recipient_name = db.Column(db.String(120), nullable=False)
     timestamp = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     driver_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    action_type = db.Column(db.String(20), nullable=False)
+    action_type = db.Column(db.String(64), nullable=False)
 
     shipper = db.Column(db.String(150), nullable=True)
     consignee = db.Column(db.String(150), nullable=True)
