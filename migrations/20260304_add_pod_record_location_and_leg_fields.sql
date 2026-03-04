@@ -1,0 +1,14 @@
+BEGIN;
+
+ALTER TABLE pod_records
+ADD COLUMN IF NOT EXISTS latitude VARCHAR(32),
+ADD COLUMN IF NOT EXISTS longitude VARCHAR(32),
+ADD COLUMN IF NOT EXISTS shipment_id BIGINT REFERENCES shipments(id) ON DELETE SET NULL,
+ADD COLUMN IF NOT EXISTS leg_id BIGINT REFERENCES shipment_legs(id) ON DELETE SET NULL,
+ADD COLUMN IF NOT EXISTS leg_sequence INTEGER,
+ADD COLUMN IF NOT EXISTS leg_type VARCHAR(64);
+
+CREATE INDEX IF NOT EXISTS ix_pod_records_shipment_id ON pod_records (shipment_id);
+CREATE INDEX IF NOT EXISTS ix_pod_records_leg_id ON pod_records (leg_id);
+
+COMMIT;
