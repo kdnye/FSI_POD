@@ -39,6 +39,19 @@ def _get_max_content_length() -> int:
 
     return max_content_length_mb * 1024 * 1024
 
+
+def _get_positive_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name, str(default)).strip()
+    try:
+        parsed_value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a whole number.") from exc
+
+    if parsed_value <= 0:
+        raise RuntimeError(f"{name} must be greater than zero.")
+
+    return parsed_value
+
 def get_runtime_config() -> dict:
     # Prefer fragmented DB secrets when available.
     db_user = os.getenv("DB_USER", "").strip()
@@ -79,6 +92,13 @@ def get_runtime_config() -> dict:
         "SECRET_KEY": _get_env("SECRET_KEY", "dev-only-change-me", required_in_production=True).strip(),
         "SQLALCHEMY_DATABASE_URI": db_url_str,
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+        "SQLALCHEMY_ENGINE_OPTIONS": {
+            "pool_size": _get_positive_int_env("DB_POOL_SIZE", 5),
+            "max_overflow": _get_positive_int_env("DB_MAX_OVERFLOW", 10),
+            "pool_timeout": _get_positive_int_env("DB_POOL_TIMEOUT", 30),
+            "pool_recycle": _get_positive_int_env("DB_POOL_RECYCLE", 1800),
+            "pool_pre_ping": _str_to_bool(os.getenv("DB_POOL_PRE_PING"), default=True),
+        },
         "MAX_CONTENT_LENGTH": _get_max_content_length(),
         "DEBUG": _str_to_bool(os.getenv("DEBUG"), default=False),
         "PORT": int(os.getenv("PORT", "8080")),
