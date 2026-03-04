@@ -605,47 +605,82 @@ def upload_load_board_csv():
 
     try:
         csv_file.seek(0)
-        decoded = csv_file.read().decode("utf-8-sig")
-        rows = list(csv.DictReader(decoded.splitlines()))
+        decoded_lines = csv_file.read().decode("utf-8-sig").splitlines()
+        header_index = None
+        for index, line in enumerate(decoded_lines):
+            if "HWB" in line and "Mawb#" in line:
+                header_index = index
+                break
+
+        if header_index is None:
+            flash("CSV is missing required headers.")
+            return redirect(url_for("paperwork.active_load_board"))
+
+        reader = csv.DictReader(decoded_lines[header_index:])
+        rows = list(reader)
     except Exception:
-        flash("Unable to read the CSV file.")
+        flash("Unable to read the CSV file. Ensure it is a valid format.")
         return redirect(url_for("paperwork.active_load_board"))
 
     required_fields = {
-        "mawb_number",
-        "hwb_number",
-        "shipper_address",
-        "consignee_address",
-        "origin_airport",
-        "destination_airport",
+        "Mawb#",
+        "HWB",
+        "Org",
+        "Dest",
     }
-    optional_driver_fields = {"first_mile_driver_id", "last_mile_driver_id"}
     if not rows:
-        flash("CSV is empty.")
+        flash("CSV is empty or missing headers.")
         return redirect(url_for("paperwork.active_load_board"))
 
     csv_headers = set(rows[0].keys())
     if not required_fields.issubset(csv_headers):
         flash(
             "CSV is missing required headers: "
-            "mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport."
+            "Mawb#, HWB, Org, Dest."
         )
         return redirect(url_for("paperwork.active_load_board"))
+
+    def build_address(row: dict[str, str | None], name_key: str, extra_keys: list[str]) -> str:
+        name_value = (row.get(name_key) or "").strip()
+        extra_parts = [(row.get(key) or "").strip() for key in extra_keys]
+        extra_parts = [part for part in extra_parts if part]
+        if extra_parts:
+            return ", ".join([name_value, *extra_parts] if name_value else extra_parts)
+        return name_value
+
+    all_drivers = User.query.filter_by(is_active=True).all()
+    driver_map: dict[str, int] = {}
+    for driver in all_drivers:
+        candidate_names = {
+            (driver.name or "").strip().lower(),
+            " ".join(part for part in [driver.first_name, driver.last_name] if part).strip().lower(),
+        }
+        for candidate in candidate_names:
+            if candidate:
+                driver_map[candidate] = driver.id
+
+    def resolve_driver_id(driver_name_raw: str | None) -> int | None:
+        if not driver_name_raw:
+            return None
+        cleaned_name = str(driver_name_raw).strip().lower()
+        if not cleaned_name:
+            return None
+        return driver_map.get(cleaned_name)
 
     iata_pattern = re.compile(r"^[A-Z]{3}$")
     row_errors: list[str] = []
     parsed_rows: list[dict] = []
     seen_hwb_numbers: set[str] = set()
 
-    for index, row in enumerate(rows, start=2):
+    for index, row in enumerate(rows, start=(header_index or 0) + 2):
         row_issue_list: list[str] = []
 
-        mawb_number = (row.get("mawb_number") or "").strip()
-        hwb_number = (row.get("hwb_number") or "").strip()
-        shipper_address = (row.get("shipper_address") or "").strip()
-        consignee_address = (row.get("consignee_address") or "").strip()
-        origin_airport = (row.get("origin_airport") or "").strip().upper()
-        destination_airport = (row.get("destination_airport") or "").strip().upper()
+        mawb_number = (row.get("Mawb#") or "").strip()
+        hwb_number = (row.get("HWB") or "").strip()
+        shipper_address = build_address(row, "Shipper Name", ["Shipper Address1", "S-City", "S-State", "S-Zip"])
+        consignee_address = build_address(row, "Consignee Name", ["Consignee Address 1", "C-City", "C-State", "C-Zip"])
+        origin_airport = (row.get("Org") or "").strip().upper()
+        destination_airport = (row.get("Dest") or "").strip().upper()
         status = (row.get("status") or "Pending").strip() or "Pending"
 
         if not mawb_number:
@@ -666,23 +701,8 @@ def upload_load_board_csv():
         elif hwb_number:
             seen_hwb_numbers.add(hwb_number)
 
-        first_mile_driver = None
-        last_mile_driver = None
-
-        for field_name in optional_driver_fields:
-            raw_value = (row.get(field_name) or "").strip()
-            if not raw_value:
-                continue
-            try:
-                parsed_value = int(raw_value)
-            except ValueError:
-                row_issue_list.append(f"{field_name} must be an integer if provided")
-                continue
-
-            if field_name == "first_mile_driver_id":
-                first_mile_driver = parsed_value
-            if field_name == "last_mile_driver_id":
-                last_mile_driver = parsed_value
+        first_mile_driver = resolve_driver_id(row.get("P/U Driver Name"))
+        last_mile_driver = resolve_driver_id(row.get("Del Driver Name"))
 
         if row_issue_list:
             row_errors.append(f"Row {index}: {'; '.join(row_issue_list)}")
