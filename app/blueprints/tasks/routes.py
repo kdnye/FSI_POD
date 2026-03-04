@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
+from app.services.gcs import generate_signed_url
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
 from models import User
 
@@ -62,8 +63,8 @@ def send_email_task() -> tuple[dict[str, str], int]:
     location_name = payload.get("location_name")
     shipper_email = payload.get("shipper_email")
     consignee_email = payload.get("consignee_email")
-    photo_url = payload.get("photo_url")
-    signature_url = payload.get("signature_url")
+    photo_blob_name = payload.get("photo_blob_name")
+    signature_blob_name = payload.get("signature_blob_name")
 
     if shipment_id is None or actor_user_id is None or not action_type:
         _log_task_validation_failure("missing_required_fields", payload)
@@ -87,6 +88,32 @@ def send_email_task() -> tuple[dict[str, str], int]:
     driver = db.session.get(User, actor_user_id_int)
     if driver is None:
         return jsonify({"error": "Driver user not found for email task."}), 404
+
+    try:
+        photo_url = generate_signed_url(photo_blob_name) if photo_blob_name else None
+        signature_url = generate_signed_url(signature_blob_name) if signature_blob_name else None
+    except Exception as exc:
+        current_app.logger.exception(
+            "Failed to generate signed URLs for shipment alert task shipment_id=%s action_type=%s task_name=%s request_id=%s",
+            shipment_id,
+            action_type,
+            task_name,
+            request_id,
+            exc_info=exc,
+        )
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "message": "Failed to generate media URLs for shipment alert.",
+                        "hwb_number": hwb_number,
+                        "action_type": action_type,
+                        "reason": "signed_url_generation_failed",
+                    }
+                }
+            ),
+            500,
+        )
 
     timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
 

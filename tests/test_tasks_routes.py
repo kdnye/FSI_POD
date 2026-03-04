@@ -14,7 +14,11 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
             calls.append(kwargs)
             return True, "sent"
 
+        def _fake_signed_url(blob_name):
+            return f"https://signed/{blob_name}"
+
         monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+        monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", _fake_signed_url)
 
         response = client.post(
             "/api/tasks/send-email",
@@ -29,6 +33,8 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
                 "actor_user_id": driver.id,
                 "hwb_number": "HWB44",
                 "location_name": "PHX",
+                "photo_blob_name": "pods/photo.jpg",
+                "signature_blob_name": "pods/signature.jpg",
                 "shipper_email": "shipper@example.com",
                 "consignee_email": "consignee@example.com",
             },
@@ -37,6 +43,8 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
     assert response.status_code == 200
     assert calls[0]["action_type"] == "SHIPPER_PICKUP"
     assert calls[0]["hwb_number"] == "HWB44"
+    assert calls[0]["photo_url"] == "https://signed/pods/photo.jpg"
+    assert calls[0]["signature_url"] == "https://signed/pods/signature.jpg"
 
 
 def test_send_email_task_route_rejects_untrusted_direct_post(client, app):
@@ -74,6 +82,7 @@ def test_send_email_task_route_returns_retryable_error_when_send_fails(client, a
             return False, "missing_recipients"
 
         monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+        monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", lambda blob_name: f"https://signed/{blob_name}")
 
         response = client.post(
             "/api/tasks/send-email",
@@ -86,6 +95,7 @@ def test_send_email_task_route_returns_retryable_error_when_send_fails(client, a
                 "action_type": "SHIPPER_PICKUP",
                 "actor_user_id": driver.id,
                 "hwb_number": "HWB99",
+                "photo_blob_name": "pods/photo.jpg",
             },
         )
 
@@ -94,6 +104,39 @@ def test_send_email_task_route_returns_retryable_error_when_send_fails(client, a
     assert payload["error"]["hwb_number"] == "HWB99"
     assert payload["error"]["action_type"] == "SHIPPER_PICKUP"
     assert payload["error"]["reason"] == "missing_recipients"
+
+
+def test_send_email_task_route_returns_retryable_error_when_url_generation_fails(client, app, monkeypatch):
+    with app.app_context():
+        driver = User(email="driver3@example.com", password_hash="hash", employee_approved=True)
+        db.session.add(driver)
+        db.session.commit()
+        driver_id = driver.id
+
+    monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", lambda **_kwargs: (True, "sent"))
+
+    def _broken_signed_url(_blob_name):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", _broken_signed_url)
+
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-3b",
+            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+        },
+        json={
+            "shipment_id": 100,
+            "action_type": "SHIPPER_PICKUP",
+            "actor_user_id": driver_id,
+            "hwb_number": "HWB100",
+            "photo_blob_name": "pods/photo.jpg",
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.get_json()["error"]["reason"] == "signed_url_generation_failed"
 
 
 def test_send_email_task_route_validates_payload_after_auth(client, app):
