@@ -35,8 +35,8 @@ def test_apply_pod_transition_triggers_notification(monkeypatch, app):
 
         calls = []
 
-        def _fake_enqueue(shipment_id, action_type, actor_user_id, **kwargs):
-            calls.append((shipment_id, action_type, actor_user_id, kwargs.get("shipper_email"), kwargs.get("consignee_email")))
+        def _fake_enqueue(payload):
+            calls.append((payload.shipment_id, payload.action_type, payload.actor_user_id, payload.shipper_email, payload.consignee_email))
 
         monkeypatch.setattr("app.services.shipment_workflow.enqueue_email_task", _fake_enqueue)
 
@@ -48,7 +48,7 @@ def test_apply_pod_transition_triggers_notification(monkeypatch, app):
 
 
 def test_shipper_pickup_reassigns_leg_1_to_scanning_driver(monkeypatch, app):
-    monkeypatch.setattr("app.services.shipment_workflow.enqueue_email_task", lambda **_kwargs: None)
+    monkeypatch.setattr("app.services.shipment_workflow.enqueue_email_task", lambda _payload: None)
     with app.app_context():
         original_driver = User(email="workflow-leg1-original@example.com", password_hash="hash", employee_approved=True)
         scanning_driver = User(email="workflow-leg1-scan@example.com", password_hash="hash", employee_approved=True)
@@ -79,7 +79,7 @@ def test_shipper_pickup_reassigns_leg_1_to_scanning_driver(monkeypatch, app):
 
 
 def test_destination_pickup_reassigns_leg_3_to_scanning_driver(monkeypatch, app):
-    monkeypatch.setattr("app.services.shipment_workflow.enqueue_email_task", lambda **_kwargs: None)
+    monkeypatch.setattr("app.services.shipment_workflow.enqueue_email_task", lambda _payload: None)
     with app.app_context():
         pickup_driver = User(email="workflow-leg3-pickup@example.com", password_hash="hash", employee_approved=True)
         original_delivery_driver = User(email="workflow-leg3-original@example.com", password_hash="hash", employee_approved=True)

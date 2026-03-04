@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app import db
-from app.services.tasks import enqueue_email_task
+from app.services.tasks import EmailTaskPayload, enqueue_email_task
 from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus
 
 
@@ -85,15 +85,17 @@ def _enqueue_pod_notification(
     signature_blob_name: str | None,
 ) -> None:
     enqueue_email_task(
-        shipment_id=shipment.id,
-        action_type=action,
-        actor_user_id=actor_user_id,
-        hwb_number=shipment.hwb_number,
-        location_name=_resolve_location_name(action, leg1, leg3),
-        photo_blob_name=photo_blob_name,
-        signature_blob_name=signature_blob_name,
-        shipper_email=shipment.shipper_email,
-        consignee_email=shipment.consignee_email,
+        EmailTaskPayload(
+            shipment_id=shipment.id,
+            action_type=action,
+            actor_user_id=actor_user_id,
+            hwb_number=shipment.hwb_number,
+            location_name=_resolve_location_name(action, leg1, leg3),
+            photo_blob_name=photo_blob_name,
+            signature_blob_name=signature_blob_name,
+            shipper_email=shipment.shipper_email,
+            consignee_email=shipment.consignee_email,
+        )
     )
 
 
