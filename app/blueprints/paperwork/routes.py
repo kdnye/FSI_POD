@@ -184,14 +184,26 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         active_leg = _shipment_current_leg(shipment)
         display_driver_id = active_leg.assigned_driver_id if active_leg else None
 
+    active_leg = _shipment_current_leg(shipment)
+    current_leg_type = None
+    current_leg_status = None
+    if active_leg:
+        leg_type_value = getattr(active_leg.leg_type, "value", active_leg.leg_type)
+        leg_status_value = getattr(active_leg.status, "value", active_leg.status)
+        current_leg_type = str(leg_type_value) if leg_type_value is not None else None
+        current_leg_status = str(leg_status_value) if leg_status_value is not None else None
+
     # UI Stage Labels
     stage_label = "Awaiting Pickup"
     stage_class = "status-awaiting-pickup"
 
-    if shipment.overall_status == ShipmentStatus.PICKED_UP:
-        stage_label = "At Origin Airport"
+    if shipment.overall_status == ShipmentStatus.IN_PROGRESS and shipment.current_leg_index == 1:
+        stage_label = "En Route to Origin Airport"
+        stage_class = "status-in-progress"
+    elif shipment.overall_status == ShipmentStatus.PICKED_UP:
+        stage_label = "At Origin Airport (In Transit)"
         stage_class = "status-picked-up"
-    elif shipment.overall_status == ShipmentStatus.IN_PROGRESS:
+    elif shipment.overall_status == ShipmentStatus.IN_PROGRESS and shipment.current_leg_index == 3:
         stage_label = "Out for Delivery"
         stage_class = "status-in-progress"
     elif shipment.overall_status == ShipmentStatus.DELIVERED:
@@ -207,6 +219,8 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         assigned_driver=display_driver_id,
         status=_legacy_status_label(shipment.overall_status),
         shipment=shipment,
+        current_leg_type=current_leg_type,
+        current_leg_status=current_leg_status,
         stage_label=stage_label,
         stage_class=stage_class,
     )
@@ -296,15 +310,11 @@ def query_loads(full_board_access: bool, include_delivered: bool = True, include
         load_query = LoadBoard.query
         if not full_board_access:
             load_query = load_query.filter_by(assigned_driver=g.current_user.id)
-        if not include_delivered:
-            load_query = load_query.filter(LoadBoard.status != "Delivered")
         if not include_cancelled:
             load_query = load_query.filter(LoadBoard.status != "Cancelled")
         return load_query.order_by(LoadBoard.hwb_number.asc()).all()
 
     shipment_query = Shipment.query.order_by(Shipment.hwb_number.asc())
-    if not include_delivered:
-        shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.DELIVERED)
     if not include_cancelled:
         shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.CANCELLED)
     shipments = shipment_query.all()
@@ -633,7 +643,7 @@ def active_load_board():
             PODRecord.query
             .filter(
                 PODRecord.hwb_number.in_(load_hwbs),
-                PODRecord.action_type.in_(["CONSIGNEE_DROP", "Delivery"]),
+                PODRecord.action_type == "CONSIGNEE_DROP",
             )
             .order_by(PODRecord.id.desc())
             .all()
@@ -641,6 +651,24 @@ def active_load_board():
         for pod_record in pod_records:
             if pod_record.hwb_number and pod_record.hwb_number not in latest_delivery_by_hwb:
                 latest_delivery_by_hwb[pod_record.hwb_number] = pod_record
+
+    if not show_delivered:
+        now_utc = datetime.now(timezone.utc)
+        visible_loads = []
+        for load in loads:
+            if load.status != "Delivered":
+                visible_loads.append(load)
+                continue
+
+            pod_record = latest_delivery_by_hwb.get(load.hwb_number)
+            delivered_at = pod_record.timestamp if pod_record else None
+            if delivered_at and delivered_at.tzinfo is None:
+                delivered_at = delivered_at.replace(tzinfo=timezone.utc)
+
+            if delivered_at and (now_utc - delivered_at).total_seconds() > 4 * 60 * 60:
+                continue
+            visible_loads.append(load)
+        loads = visible_loads
 
     for load in loads:
         pod_record = latest_delivery_by_hwb.get(load.hwb_number)

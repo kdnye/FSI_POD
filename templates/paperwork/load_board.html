@@ -53,6 +53,7 @@
         <table class="fsi-table fsi-load-board-table">
             <thead>
                 <tr>
+                    {% if full_board_access %}<th>Resolve</th>{% endif %}
                     <th>HWB</th>
                     <th class="fsi-column--stacked">
                         <div class="fsi-header-stack">
@@ -65,7 +66,6 @@
                     <th>Status</th>
                     <th>Current Leg</th>
                     <th>Leg Status</th>
-                    {% if full_board_access %}<th>Resolve</th>{% endif %}
                     <th>POD Photo</th>
                     <th>POD Signature</th>
                     <th>Printed Name</th>
@@ -74,6 +74,9 @@
             <tbody>
                 {% for load in loads %}
                 <tr>
+                    {% if full_board_access %}
+                    <td><button class="fsi-secondary-btn" type="button" onclick="executeClear('{{ load.hwb_number }}')">Resolve</button></td>
+                    {% endif %}
                     <td>{{ load.hwb_number }}</td>
                     
                     <td class="fsi-column--stacked">
@@ -114,9 +117,6 @@
                     <td><span class="fsi-status-badge {{ status_class }}">{{ status_label }}</span></td>
                     <td>{{ (load.current_leg_type or '—') if load.current_leg_type is defined else '—' }}</td>
                     <td>{{ (load.current_leg_status or '—') if load.current_leg_status is defined else '—' }}</td>
-                    {% if full_board_access %}
-                    <td><button class="fsi-secondary-btn" type="button" onclick="executeClear('{{ load.hwb_number }}')">Resolve</button></td>
-                    {% endif %}
                     <td>
                         {% if load.pod_delivery_photo %}
                         <a href="{{ load.pod_delivery_photo }}" target="_blank" rel="noopener noreferrer">View photo</a>
