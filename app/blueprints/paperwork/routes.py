@@ -312,8 +312,35 @@ def query_loads(full_board_access: bool, include_delivered: bool = True, include
             load_query = load_query.filter_by(assigned_driver=g.current_user.id)
         if not include_cancelled:
             load_query = load_query.filter(LoadBoard.status != "Cancelled")
-        return load_query.order_by(LoadBoard.hwb_number.asc()).all()
 
+        legacy_loads = load_query.order_by(LoadBoard.hwb_number.asc()).all()
+
+        # Fetch matching shipments to inject rich leg data into the legacy board
+        hwbs = [lb.hwb_number for lb in legacy_loads]
+        shipments = {s.hwb_number: s for s in Shipment.query.filter(Shipment.hwb_number.in_(hwbs)).all()}
+
+        views = []
+        for lb in legacy_loads:
+            shipment = shipments.get(lb.hwb_number)
+            if shipment:
+                # Inherit rich leg data, custom labels, and accurate driver handoffs
+                views.append(load_view_from_shipment(shipment))
+            else:
+                # Fallback for old records without a shipment workflow entry
+                views.append(LegacyLoadView(
+                    hwb_number=lb.hwb_number,
+                    shipper=lb.shipper,
+                    consignee=lb.consignee,
+                    contact_name=lb.contact_name,
+                    phone=lb.phone,
+                    assigned_driver=lb.assigned_driver,
+                    status=lb.status,
+                    stage_label=lb.status,
+                    stage_class=""
+                ))
+        return views
+
+    # Native shipment path
     shipment_query = Shipment.query.order_by(Shipment.hwb_number.asc())
     if not include_cancelled:
         shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.CANCELLED)
