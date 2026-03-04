@@ -6,11 +6,6 @@
 {% block content %}
 <section class="fsi-card fsi-card--load-board">
     <h1 class="fsi-display">{{ "Active Load Board" if full_board_access else "My Active Loads" }}</h1>
-    <div class="fsi-load-board-actions">
-        <a class="fsi-secondary-btn" href="{{ url_for('paperwork.active_load_board', show_delivered='0' if show_delivered else '1') }}">
-            {{ 'Hide Delivered' if show_delivered else 'Show Delivered' }}
-        </a>
-    </div>
 
     <section class="fsi-load-status-legend" aria-label="Load status legend">
         <h2 class="fsi-load-status-legend__title">Status Legend</h2>
@@ -25,25 +20,35 @@
     </section>
 
     {% if full_board_access %}
-    <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
-        <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
-        <p style="margin-top: 0;">Upload a CSV with required headers: <code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code>.</p>
-        <p style="margin-top: 0;">Optional headers: <code>first_mile_driver_id, last_mile_driver_id, status</code>. Airport fields must be 3-letter uppercase IATA codes (for example <code>PHX</code>), and return shipments must be uploaded as a separate booking row.</p>
-        <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="file" name="load_board_csv" accept=".csv" required>
-            <button type="submit">Upload to Load Board</button>
-        </form>
-    </section>
+    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: stretch;">
+        <section style="flex: 0 0 33%; margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
+            <p style="margin-top: 0;">Upload a CSV with required headers: <code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code>.</p>
+            <p style="margin-top: 0;">Optional headers: <code>first_mile_driver_id, last_mile_driver_id, status</code>. Airport fields must be 3-letter uppercase IATA codes (for example <code>PHX</code>), and return shipments must be uploaded as a separate booking row.</p>
+            <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="file" name="load_board_csv" accept=".csv" required>
+                <button type="submit">Upload to Load Board</button>
+            </form>
+        </section>
 
-    <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
-        <h2 style="margin-top: 0;">Ops/Admin Load Resolution</h2>
-        <p style="margin-top: 0;">Bulk resolution forcefully marks all active loads as cancelled.</p>
-        <button class="fsi-secondary-btn" type="button" onclick="executeClear('ALL')">Clear All Active Loads</button>
-    </section>
+        <section style="flex: 0 0 20%; margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <h2 style="margin-top: 0;">Ops/Admin Load Resolution</h2>
+            <p style="margin-top: 0;">Bulk resolution forcefully marks all active loads as cancelled.</p>
+            <button class="fsi-secondary-btn" type="button" onclick="executeClear('ALL')">Clear All Active Loads</button>
+        </section>
+    </div>
     {% endif %}
 
     {% if loads %}
+    <div class="fsi-load-board-actions">
+        <a class="fsi-secondary-btn" href="{{ url_for('paperwork.active_load_board', show_delivered='0' if show_delivered else '1', show_cancelled='1' if show_cancelled else '0') }}">
+            {{ 'Hide Delivered' if show_delivered else 'Show Delivered' }}
+        </a>
+        <a class="fsi-secondary-btn" href="{{ url_for('paperwork.active_load_board', show_delivered='1' if show_delivered else '0', show_cancelled='0' if show_cancelled else '1') }}">
+            {{ 'Hide Cancelled' if show_cancelled else 'Show Cancelled' }}
+        </a>
+    </div>
     <div class="fsi-load-board-wrap fsi-table-wrap">
         <table class="fsi-table fsi-load-board-table">
             <thead>
@@ -70,19 +75,23 @@
                     {% set shipper_name = shipper_parts[0] if shipper_parts else '—' %}
                     {% set shipper_address = shipper_parts[1] if shipper_parts|length > 1 else '' %}
                     <td class="fsi-entity-cell">
-                        <span>{{ shipper_name or '—' }}</span>
-                        {% if shipper_address %}
-                        <span class="fsi-entity-address">{{ shipper_address }}</span>
-                        {% endif %}
+                        <div style="display: flex; align-items: center;">
+                            <span>{{ shipper_name or '—' }}</span>
+                            {% if shipper_address %}
+                            <span title="{{ shipper_parts[0] }}, {{ shipper_address }}" style="cursor: help; color: var(--fsi-teal); font-weight: bold; margin-left: 0.4rem;">ⓘ</span>
+                            {% endif %}
+                        </div>
                     </td>
                     {% set consignee_parts = (load.consignee or '').split(', ', 1) %}
                     {% set consignee_name = consignee_parts[0] if consignee_parts else '—' %}
                     {% set consignee_address = consignee_parts[1] if consignee_parts|length > 1 else '' %}
                     <td class="fsi-entity-cell">
-                        <span>{{ consignee_name or '—' }}</span>
-                        {% if consignee_address %}
-                        <span class="fsi-entity-address">{{ consignee_address }}</span>
-                        {% endif %}
+                        <div style="display: flex; align-items: center;">
+                            <span>{{ consignee_name or '—' }}</span>
+                            {% if consignee_address %}
+                            <span title="{{ consignee_parts[0] }}, {{ consignee_address }}" style="cursor: help; color: var(--fsi-teal); font-weight: bold; margin-left: 0.4rem;">ⓘ</span>
+                            {% endif %}
+                        </div>
                     </td>
                     <td>{{ load.contact_name }}</td>
                     <td>{{ load.current_leg_driver_name or '—' }}</td>
