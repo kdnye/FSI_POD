@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from io import BytesIO
+import re
 
 from app import db
 from models import LoadBoard, PODRecord, Role, Shipment, ShipmentGroup, ShipmentLeg, ShipmentStatus, User
@@ -120,6 +121,62 @@ def test_ops_can_upload_load_board_csv(client):
     entry = db.session.get(LoadBoard, "HWB-103")
     assert entry is not None
     assert entry.shipper == "Acme"
+
+
+def test_upload_load_board_csv_requires_csrf_token_and_matching_session(client):
+    client.application.config["WTF_CSRF_ENABLED"] = True
+
+    ops_user = User(
+        email="ops-csrf@example.com",
+        password_hash="test-hash",
+        role=Role.EMPLOYEE,
+        employee_approved=True,
+        is_active=True,
+        is_ops=True,
+    )
+    db.session.add(ops_user)
+    db.session.commit()
+    _login(client, ops_user.id)
+
+    load_board_response = client.get("/load-board")
+    assert load_board_response.status_code == 200
+
+    body = load_board_response.get_data(as_text=True)
+    csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', body)
+    assert csrf_match is not None
+    csrf_token = csrf_match.group(1)
+
+    session_cookie_name = client.application.config.get("SESSION_COOKIE_NAME", "session")
+    assert client.get_cookie(session_cookie_name) is not None
+
+    csv_payload = (
+        "Mawb#,HWB,Shipper Name,Consignee Name,Org,Dest,Status\n"
+        "MAWB-CSRF-1,HWB-CSRF-1,Acme Shipper,Receiver One,PHX,LAX,Awaiting Pickup\n"
+    )
+
+    missing_token_response = client.post(
+        "/load-board/upload-csv",
+        data={"load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert missing_token_response.status_code == 400
+    assert db.session.get(LoadBoard, "HWB-CSRF-1") is None
+
+    valid_token_response = client.post(
+        "/load-board/upload-csv",
+        data={
+            "csrf_token": csrf_token,
+            "load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert valid_token_response.status_code == 302
+    entry = db.session.get(LoadBoard, "HWB-CSRF-1")
+    assert entry is not None
 
 
 def test_non_ops_user_sees_my_active_loads_only(client):
