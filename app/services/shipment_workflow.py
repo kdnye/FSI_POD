@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app import db
-from app.services.postmark import send_shipment_alert
+from app.services.tasks import enqueue_email_task
 from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus, User
 
 
@@ -102,10 +102,10 @@ def apply_pod_transition(
         )
         driver_user = db.session.get(User, actor_user_id)
         if driver_user is not None:
-            send_shipment_alert(
+            enqueue_email_task(
                 shipment.id,
                 action,
-                driver_user,
+                actor_user_id,
                 shipper_email=shipment.shipper_email,
                 consignee_email=shipment.consignee_email,
             )
@@ -135,10 +135,10 @@ def apply_pod_transition(
         )
         driver_user = db.session.get(User, actor_user_id)
         if driver_user is not None:
-            send_shipment_alert(
+            enqueue_email_task(
                 shipment.id,
                 action,
-                driver_user,
+                actor_user_id,
                 shipper_email=shipment.shipper_email,
                 consignee_email=shipment.consignee_email,
             )
@@ -172,10 +172,10 @@ def apply_pod_transition(
         )
         driver_user = db.session.get(User, actor_user_id)
         if driver_user is not None:
-            send_shipment_alert(
+            enqueue_email_task(
                 shipment.id,
                 action,
-                driver_user,
+                actor_user_id,
                 shipper_email=shipment.shipper_email,
                 consignee_email=shipment.consignee_email,
             )
@@ -203,10 +203,10 @@ def apply_pod_transition(
         )
         driver_user = db.session.get(User, actor_user_id)
         if driver_user is not None:
-            send_shipment_alert(
+            enqueue_email_task(
                 shipment.id,
                 action,
-                driver_user,
+                actor_user_id,
                 shipper_email=shipment.shipper_email,
                 consignee_email=shipment.consignee_email,
             )

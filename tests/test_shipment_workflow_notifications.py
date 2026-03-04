@@ -35,13 +35,13 @@ def test_apply_pod_transition_triggers_notification(monkeypatch, app):
 
         calls = []
 
-        def _fake_send(shipment_id, action_type, driver_user, shipper_email=None, consignee_email=None):
-            calls.append((shipment_id, action_type, driver_user.email, shipper_email, consignee_email))
+        def _fake_enqueue(shipment_id, action_type, actor_user_id, shipper_email=None, consignee_email=None):
+            calls.append((shipment_id, action_type, actor_user_id, shipper_email, consignee_email))
 
-        monkeypatch.setattr("app.services.shipment_workflow.send_shipment_alert", _fake_send)
+        monkeypatch.setattr("app.services.shipment_workflow.enqueue_email_task", _fake_enqueue)
 
         apply_pod_transition(shipment=shipment, action_type="SHIPPER_PICKUP", actor_user_id=driver.id)
 
         assert calls == [
-            (shipment.id, "SHIPPER_PICKUP", "workflow-driver@example.com", "shipper@example.com", "consignee@example.com")
+            (shipment.id, "SHIPPER_PICKUP", driver.id, "shipper@example.com", "consignee@example.com")
         ]
