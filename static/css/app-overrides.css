@@ -239,7 +239,7 @@
 
 .pod-qr-reader {
   width: 100%;
-  max-width: 400px;
+  max-width: 360px;
   margin: 0 auto;
   border: 1px solid var(--color-border);
   border-radius: 0.55rem;
@@ -247,6 +247,8 @@
 }
 
 .pod-signature-shell {
+  width: 100%;
+  max-width: 520px;
   border: 1px solid var(--color-border);
   border-radius: 0.55rem;
   overflow: hidden;
@@ -255,7 +257,7 @@
 
 .pod-signature-canvas {
   width: 100%;
-  height: 200px;
+  height: 190px;
   touch-action: none;
 }
 
@@ -341,11 +343,15 @@
   }
 
   .pod-qr-reader {
-    max-width: 320px;
+    max-width: min(100%, 260px);
+  }
+
+  .pod-signature-shell {
+    max-width: 100%;
   }
 
   .pod-signature-canvas {
-    height: 240px;
+    height: clamp(120px, 22vh, 165px);
   }
 }
 
@@ -356,5 +362,13 @@
 
   .fsi-secondary-btn {
     padding-inline: 0.8rem;
+  }
+
+  .pod-qr-reader {
+    max-width: min(100%, 220px);
+  }
+
+  .pod-signature-canvas {
+    height: 130px;
   }
 }
