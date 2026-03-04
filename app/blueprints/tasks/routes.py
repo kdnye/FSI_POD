@@ -6,10 +6,22 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
-from app.services.postmark import send_shipment_alert
+from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
 from models import User
 
 tasks_bp = Blueprint("tasks", __name__)
+
+
+def _log_task_validation_failure(reason: str, payload: dict[str, object]) -> None:
+    current_app.logger.warning(
+        "send_email_task validation failed reason=%s shipment_id=%s action_type=%s actor_user_id=%s task_name=%s request_id=%s",
+        reason,
+        payload.get("shipment_id"),
+        payload.get("action_type"),
+        payload.get("actor_user_id"),
+        request.headers.get("X-CloudTasks-TaskName"),
+        request.headers.get("X-Request-Id"),
+    )
 
 
 def _validate_task_request() -> tuple[dict[str, str], int] | None:
@@ -54,16 +66,32 @@ def send_email_task() -> tuple[dict[str, str], int]:
     signature_url = payload.get("signature_url")
 
     if shipment_id is None or actor_user_id is None or not action_type:
+        _log_task_validation_failure("missing_required_fields", payload)
         return jsonify({"error": "Missing required task payload fields."}), 400
 
-    driver = db.session.get(User, int(actor_user_id))
+    if not isinstance(action_type, str):
+        _log_task_validation_failure("invalid_action_type_type", payload)
+        return jsonify({"error": "Invalid action_type for email task."}), 400
+
+    normalized_action_type = action_type.strip().upper()
+    if not normalized_action_type or normalized_action_type not in ALLOWED_SHIPMENT_ALERT_ACTIONS:
+        _log_task_validation_failure("unknown_action_type", payload)
+        return jsonify({"error": "Invalid action_type for email task."}), 400
+
+    try:
+        actor_user_id_int = int(actor_user_id)
+    except (TypeError, ValueError):
+        _log_task_validation_failure("malformed_actor_user_id", payload)
+        return jsonify({"error": "Invalid actor_user_id for email task."}), 400
+
+    driver = db.session.get(User, actor_user_id_int)
     if driver is None:
         return jsonify({"error": "Driver user not found for email task."}), 404
 
     timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
 
     sent, reason = send_shipment_alert(
-        action_type=action_type,
+        action_type=normalized_action_type,
         hwb_number=hwb_number,
         location_name=location_name,
         driver_email=driver.email,

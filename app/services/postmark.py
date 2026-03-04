@@ -14,6 +14,7 @@ _ACTION_TO_SETTING = {
     "DESTINATION_AIRPORT_PICKUP": "notify_dest_pickup",
     "CONSIGNEE_DROP": "notify_consignee_drop",
 }
+ALLOWED_SHIPMENT_ALERT_ACTIONS = frozenset(_ACTION_TO_SETTING)
 
 
 def _is_valid_email(email: str | None) -> bool:
