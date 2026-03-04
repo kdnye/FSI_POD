@@ -72,6 +72,8 @@
 
 .fsi-card--load-board {
   width: 100%;
+.fsi-card--load-board {
+  width: min(100%, 100vw - 2rem, 120rem);
 }
 
 .fsi-form-grid label {
