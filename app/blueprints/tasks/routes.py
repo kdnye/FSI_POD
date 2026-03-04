@@ -195,33 +195,42 @@ def send_email_task() -> tuple[dict[str, str], int]:
 @tasks_bp.get("/test-email-connectivity")
 def test_email_connectivity():
     from app.services.postmark import send_shipment_alert
-    from models import Shipment
+    from models import Shipment, User
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     
-    # Try to find any existing shipment to use as a data source
+    # Get test data from your DB
     shipment = Shipment.query.first()
+    driver = User.query.filter_by(is_active=True).first()
     
     if not shipment:
-        return "Error: No shipments found in DB to use for test template.", 404
+        return "Error: No shipments found in DB to use for test.", 404
+    if not driver:
+        return "Error: No active users found in DB to use as driver.", 404
 
-    # metadata mimics what is sent during a real POD event
-    metadata = {
-        "recipient_name": "Connectivity Test",
-        "photo_url": "https://placehold.co/600x400?text=Test+Photo",
-        "signature_url": "https://placehold.co/600x400?text=Test+Signature"
-    }
+    # Mimic the real timestamp logic
+    timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
 
     try:
-        # This calls your Postmark logic directly
-        success = send_shipment_alert(
-            shipment=shipment,
+        # Correctly passing individual parameters to match postmark.py signature
+        success, reason = send_shipment_alert(
             action_type="SHIPPER_PICKUP",
-            metadata=metadata
+            hwb_number=shipment.hwb_number,
+            location_name="Test Connectivity Location",
+            driver_email=driver.email,
+            driver_name=driver.name or "Test Driver",
+            photo_url="https://placehold.co/600x400?text=Test+Photo",
+            signature_url="https://placehold.co/600x400?text=Test+Signature",
+            shipper_email="shipper-test@freightservicesinc.com",
+            consignee_email="consignee-test@freightservicesinc.com",
+            timestamp=timestamp
         )
         
         if success:
-            return "SUCCESS: Test email accepted by Postmark. Check your inbox (and spam).", 200
+            return f"SUCCESS: Test email accepted by Postmark. (Reason: {reason})", 200
         else:
-            return "FAILURE: send_shipment_alert returned False. Check Logs/Settings.", 500
+            return f"FAILURE: Postmark function rejected the request. Reason: {reason}", 500
             
     except Exception as e:
-        return f"CRITICAL ERROR: {str(e)}", 500
+        import traceback
+        return f"CRITICAL ERROR: {str(e)}\n\n{traceback.format_exc()}", 500
