@@ -119,8 +119,7 @@ def apply_pod_transition(
         if leg1.status == ShipmentLegStatus.COMPLETED:
             raise ShipmentTransitionError("Cannot start shipper pickup: leg 1 is already completed.")
 
-        if not leg1.assigned_driver_id:
-            leg1.assigned_driver_id = actor_user_id
+        leg1.assigned_driver_id = actor_user_id
 
         from_status = leg1.status
         if leg1.status in {ShipmentLegStatus.PENDING, ShipmentLegStatus.ASSIGNED}:
@@ -191,6 +190,8 @@ def apply_pod_transition(
             raise ShipmentTransitionError("Cannot start destination-airport pickup: shipment leg 3 is missing.")
         if leg3.status == ShipmentLegStatus.COMPLETED:
             raise ShipmentTransitionError("Cannot start destination-airport pickup: final leg is already completed.")
+
+        leg3.assigned_driver_id = actor_user_id
 
         from_status = leg3.status
         if leg3.status in {ShipmentLegStatus.PENDING, ShipmentLegStatus.ASSIGNED}:
