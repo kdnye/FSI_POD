@@ -26,8 +26,8 @@ steps:
       - --image=${_IMAGE}
       - --command=flask
       - --args=db,upgrade,--directory,alembic
-      - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod,FLASK_APP=wsgi:app
-      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,DB_NAME=${_EXPENSE_DB_NAME_SECRET_NAME}:latest,DB_PASS=${_EXPENSE_DB_PASS_SECRET_NAME}:latest,DB_USER=${_EXPENSE_DB_USER_SECRET_NAME}:latest
+      - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod,FLASK_APP=wsgi:app,TASK_SERVICE_ACCOUNT_EMAIL=cloud-tasks-invoker@quote-tool-483716.iam.gserviceaccount.com,POSTMARK_FROM_EMAIL=notifications@freightservicesinc.com,PUBLIC_SERVICE_URL=https://fsi-pod-464563024600.us-central1.run.app,EMAIL_QUEUE_NAME=email-queue,GCP_PROJECT_ID=quote-tool-483716,GCP_REGION=us-central1
+      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,DB_NAME=${_EXPENSE_DB_NAME_SECRET_NAME}:latest,DB_PASS=${_EXPENSE_DB_PASS_SECRET_NAME}:latest,DB_USER=${_EXPENSE_DB_USER_SECRET_NAME}:latest,POSTMARK_SERVER_TOKEN=POSTMARK_SERVER_TOKEN:latest
       - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
       - --max-retries=1
       - --task-timeout=600s
@@ -60,8 +60,8 @@ steps:
       - --add-volume=name=fsi-pod-storage,type=cloud-storage,bucket=fsi_pod
       - --add-volume-mount=volume=fsi-pod-storage,mount-path=/POD
       - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
-      - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod
-      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,DB_NAME=${_EXPENSE_DB_NAME_SECRET_NAME}:latest,DB_PASS=${_EXPENSE_DB_PASS_SECRET_NAME}:latest,DB_USER=${_EXPENSE_DB_USER_SECRET_NAME}:latest
+      - --update-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod,TASK_SERVICE_ACCOUNT_EMAIL=cloud-tasks-invoker@quote-tool-483716.iam.gserviceaccount.com,POSTMARK_FROM_EMAIL=notifications@freightservicesinc.com,PUBLIC_SERVICE_URL=https://fsi-pod-464563024600.us-central1.run.app,EMAIL_QUEUE_NAME=email-queue,GCP_PROJECT_ID=quote-tool-483716,GCP_REGION=us-central1
+      - --update-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,DB_NAME=${_EXPENSE_DB_NAME_SECRET_NAME}:latest,DB_PASS=${_EXPENSE_DB_PASS_SECRET_NAME}:latest,DB_USER=${_EXPENSE_DB_USER_SECRET_NAME}:latest,POSTMARK_SERVER_TOKEN=POSTMARK_SERVER_TOKEN:latest
 
 images:
   - ${_IMAGE}
