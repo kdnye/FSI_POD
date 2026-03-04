@@ -116,3 +116,14 @@ def test_get_runtime_config_rejects_partial_fragmented_db_credentials(monkeypatc
 
     with pytest.raises(RuntimeError, match="Incomplete database credentials"):
         config.get_runtime_config()
+
+
+def test_get_runtime_config_includes_postmark_values(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("POSTMARK_SERVER_TOKEN", "pm-token")
+    monkeypatch.setenv("POSTMARK_FROM_EMAIL", "alerts@example.com")
+
+    runtime_config = config.get_runtime_config()
+
+    assert runtime_config["POSTMARK_SERVER_TOKEN"] == "pm-token"
+    assert runtime_config["POSTMARK_FROM_EMAIL"] == "alerts@example.com"

@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app import db
-from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus
+from app.services.postmark import send_shipment_alert
+from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus, User
 
 
 class ShipmentTransitionError(ValueError):
@@ -99,6 +100,15 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
+        driver_user = db.session.get(User, actor_user_id)
+        if driver_user is not None:
+            send_shipment_alert(
+                shipment.id,
+                action,
+                driver_user,
+                shipper_email=shipment.shipper_email,
+                consignee_email=shipment.consignee_email,
+            )
         return action
 
     if action == "ORIGIN_AIRPORT_DROP":
@@ -123,6 +133,15 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
+        driver_user = db.session.get(User, actor_user_id)
+        if driver_user is not None:
+            send_shipment_alert(
+                shipment.id,
+                action,
+                driver_user,
+                shipper_email=shipment.shipper_email,
+                consignee_email=shipment.consignee_email,
+            )
         return action
 
     if action == "DESTINATION_AIRPORT_PICKUP":
@@ -151,6 +170,15 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
+        driver_user = db.session.get(User, actor_user_id)
+        if driver_user is not None:
+            send_shipment_alert(
+                shipment.id,
+                action,
+                driver_user,
+                shipper_email=shipment.shipper_email,
+                consignee_email=shipment.consignee_email,
+            )
         return action
 
     if action == "CONSIGNEE_DROP":
@@ -173,6 +201,15 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
+        driver_user = db.session.get(User, actor_user_id)
+        if driver_user is not None:
+            send_shipment_alert(
+                shipment.id,
+                action,
+                driver_user,
+                shipper_email=shipment.shipper_email,
+                consignee_email=shipment.consignee_email,
+            )
         return action
 
     raise ShipmentTransitionError("Unsupported POD transition requested.")

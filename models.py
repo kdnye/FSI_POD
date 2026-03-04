@@ -147,6 +147,8 @@ class LoadBoard(db.Model):
     hwb_number = db.Column(db.String(100), primary_key=True)
     shipper = db.Column(db.String(150), nullable=False)
     consignee = db.Column(db.String(150), nullable=False)
+    shipper_email = db.Column(db.String(255), nullable=True)
+    consignee_email = db.Column(db.String(255), nullable=True)
     contact_name = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(40), nullable=False)
     assigned_driver = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
@@ -176,6 +178,8 @@ class Shipment(db.Model):
     shipment_group_id = db.Column(Integer, ForeignKey("shipment_groups.id", ondelete="CASCADE"), nullable=False, index=True)
     shipper_address = db.Column(String(255), nullable=True)
     consignee_address = db.Column(String(255), nullable=True)
+    shipper_email = db.Column(String(255), nullable=True)
+    consignee_email = db.Column(String(255), nullable=True)
     current_leg_index = db.Column(Integer, nullable=False, default=1)
     overall_status = db.Column(
         SQLAlchemyEnum(
@@ -301,3 +305,14 @@ class PODRecord(db.Model):
     leg_id = db.Column(db.Integer, db.ForeignKey("shipment_legs.id", ondelete="SET NULL"), nullable=True, index=True)
     leg_sequence = db.Column(db.Integer, nullable=True)
     leg_type = db.Column(db.String(64), nullable=True)
+
+
+class NotificationSettings(db.Model):
+    __tablename__ = "notification_settings"
+
+    id = db.Column(Integer, primary_key=True)
+    notify_shipper_pickup = db.Column(Boolean, nullable=False, default=False)
+    notify_origin_drop = db.Column(Boolean, nullable=False, default=False)
+    notify_dest_pickup = db.Column(Boolean, nullable=False, default=False)
+    notify_consignee_drop = db.Column(Boolean, nullable=False, default=False)
+    custom_cc_emails = db.Column(Text, nullable=True)

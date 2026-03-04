@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard · Notifications{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+  <h1 class="fsi-display" style="margin-top:0;">Admin Notifications</h1>
+  <p>Configure Postmark shipment-event email alerts and optional custom CC recipients.</p>
+</section>
+
+<section class="fsi-card" style="margin-top: 1rem;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label style="display:block; margin-bottom: .75rem;">
+      <input type="checkbox" name="notify_shipper_pickup" {% if settings.notify_shipper_pickup %}checked{% endif %}>
+      Send on Shipper Pickup
+    </label>
+
+    <label style="display:block; margin-bottom: .75rem;">
+      <input type="checkbox" name="notify_origin_drop" {% if settings.notify_origin_drop %}checked{% endif %}>
+      Send on Origin Airport Drop
+    </label>
+
+    <label style="display:block; margin-bottom: .75rem;">
+      <input type="checkbox" name="notify_dest_pickup" {% if settings.notify_dest_pickup %}checked{% endif %}>
+      Send on Destination Airport Pickup
+    </label>
+
+    <label style="display:block; margin-bottom: .75rem;">
+      <input type="checkbox" name="notify_consignee_drop" {% if settings.notify_consignee_drop %}checked{% endif %}>
+      Send on Consignee Drop / Delivery
+    </label>
+
+    <label for="custom_cc_emails" style="display:block; margin-top: 1rem;">Custom CC Emails (comma-separated)</label>
+    <textarea id="custom_cc_emails" name="custom_cc_emails" rows="4" style="width: 100%;">{{ settings.custom_cc_emails or '' }}</textarea>
+
+    <button type="submit" class="fsi-primary-btn" style="margin-top: 1rem;">Save Notifications</button>
+  </form>
+</section>
+{% endblock %}

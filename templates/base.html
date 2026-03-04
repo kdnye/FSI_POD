@@ -58,6 +58,7 @@
             <li role="none"><a role="menuitem" href="{{ url_for('paperwork.pod_history') }}" tabindex="-1" data-account-menu-item>POD History</a></li>
             {% if g.current_user and g.current_user.role in ['ADMIN', 'ADMINISTRATOR'] %}
             <li role="none"><a role="menuitem" href="/account/admin/users" tabindex="-1" data-account-menu-item>Admin Dashboard</a></li>
+            <li role="none"><a role="menuitem" href="/account/admin/notifications" tabindex="-1" data-account-menu-item>Admin Notifications</a></li>
             {% endif %}
             <li role="none"><a role="menuitem" href="/auth/logout" tabindex="-1" data-account-menu-item>Sign out</a></li>
           </ul>

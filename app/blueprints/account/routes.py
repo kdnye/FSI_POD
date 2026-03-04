@@ -3,7 +3,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 from app import db
 from app.blueprints.account.forms import ProfileForm, SettingsForm
 from app.blueprints.auth.guards import require_authenticated
-from models import Role, User
+from models import NotificationSettings, Role, User
 
 
 account_bp = Blueprint("account", __name__, url_prefix="/account")
@@ -104,4 +104,35 @@ def admin_users():
         title="Admin Dashboard",
         users=users,
         role_choices=[role.value for role in Role],
+    )
+
+
+@account_bp.route("/admin/notifications", methods=["GET", "POST"])
+@require_authenticated()
+def admin_notifications():
+    current_role = Role.from_value(getattr(g.current_user, "role", ""))
+    if not current_role.is_admin:
+        flash("Administrator access is required.", "error")
+        return redirect(url_for("paperwork.log_pod_event"))
+
+    settings = NotificationSettings.query.order_by(NotificationSettings.id.asc()).first()
+    if settings is None:
+        settings = NotificationSettings()
+        db.session.add(settings)
+        db.session.flush()
+
+    if request.method == "POST":
+        settings.notify_shipper_pickup = request.form.get("notify_shipper_pickup") == "on"
+        settings.notify_origin_drop = request.form.get("notify_origin_drop") == "on"
+        settings.notify_dest_pickup = request.form.get("notify_dest_pickup") == "on"
+        settings.notify_consignee_drop = request.form.get("notify_consignee_drop") == "on"
+        settings.custom_cc_emails = (request.form.get("custom_cc_emails") or "").strip() or None
+        db.session.commit()
+        flash("Notification settings saved.", "success")
+        return redirect(url_for("account.admin_notifications"))
+
+    return render_template(
+        "account/admin_notifications.html",
+        title="Admin Notifications",
+        settings=settings,
     )
