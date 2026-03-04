@@ -34,18 +34,23 @@ def test_send_shipment_alert_honors_toggle_and_recipients(app, monkeypatch):
 
         monkeypatch.setattr("app.services.postmark.requests.post", _fake_post)
 
-        sent = send_shipment_alert(
-            shipment_id=42,
+        sent, reason = send_shipment_alert(
             action_type="SHIPPER_PICKUP",
-            driver_user=driver,
+            hwb_number="HWB123",
+            location_name="PHX",
+            driver_email=driver.email,
+            driver_name="Driver One",
+            photo_url=None,
+            signature_url=None,
             shipper_email="shipper@example.com",
             consignee_email="consignee@example.com",
+            timestamp="2025-01-01 09:00 AM MST",
         )
 
         assert sent is True
+        assert reason == "sent"
         assert captured["headers"]["X-Postmark-Server-Token"] == "token"
-        assert captured["payload"]["To"] == "driver@example.com"
-        assert captured["payload"]["Cc"] == "shipper@example.com,consignee@example.com,ops@example.com,qa@example.com"
+        assert captured["payload"]["To"] == "driver@example.com,shipper@example.com,consignee@example.com,ops@example.com,qa@example.com"
 
 
 def test_send_shipment_alert_returns_early_when_toggle_is_off(app, monkeypatch):
@@ -63,7 +68,19 @@ def test_send_shipment_alert_returns_early_when_toggle_is_off(app, monkeypatch):
 
         monkeypatch.setattr("app.services.postmark.requests.post", _fake_post)
 
-        sent = send_shipment_alert(shipment_id=10, action_type="SHIPPER_PICKUP", driver_user=driver)
+        sent, reason = send_shipment_alert(
+            action_type="SHIPPER_PICKUP",
+            hwb_number="HWB999",
+            location_name="PHX",
+            driver_email=driver.email,
+            driver_name="Driver Off",
+            photo_url=None,
+            signature_url=None,
+            shipper_email=None,
+            consignee_email=None,
+            timestamp="2025-01-01 09:00 AM MST",
+        )
 
         assert sent is False
+        assert reason == "disabled_settings"
         assert called["value"] is False

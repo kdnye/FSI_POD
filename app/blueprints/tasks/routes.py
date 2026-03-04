@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
 from app.services.postmark import send_shipment_alert
@@ -16,6 +16,8 @@ tasks_bp = Blueprint("tasks", __name__)
 @csrf.exempt
 def send_email_task() -> tuple[dict[str, str], int]:
     payload = request.get_json(silent=True) or {}
+    task_name = request.headers.get("X-CloudTasks-TaskName")
+    request_id = request.headers.get("X-Request-Id")
 
     shipment_id = payload.get("shipment_id")
     action_type = payload.get("action_type")
@@ -36,7 +38,7 @@ def send_email_task() -> tuple[dict[str, str], int]:
 
     timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
 
-    send_shipment_alert(
+    sent, reason = send_shipment_alert(
         action_type=action_type,
         hwb_number=hwb_number,
         location_name=location_name,
@@ -48,4 +50,27 @@ def send_email_task() -> tuple[dict[str, str], int]:
         consignee_email=consignee_email,
         timestamp=timestamp,
     )
+    if not sent:
+        current_app.logger.error(
+            "Shipment alert task failed action_type=%s hwb_number=%s reason=%s task_name=%s request_id=%s",
+            action_type,
+            hwb_number,
+            reason,
+            task_name,
+            request_id,
+        )
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "message": "Failed to send shipment alert.",
+                        "hwb_number": hwb_number,
+                        "action_type": action_type,
+                        "reason": reason,
+                    }
+                }
+            ),
+            500,
+        )
+
     return jsonify({"status": "ok"}), 200
