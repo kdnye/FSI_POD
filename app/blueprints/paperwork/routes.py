@@ -170,6 +170,16 @@ def _legacy_status_label(status: ShipmentStatus | str | None) -> str:
 
 def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
     active_leg = _shipment_current_leg(shipment)
+    leg1_done = any(
+        leg.leg_sequence == 1 and leg.status == ShipmentLegStatus.COMPLETED
+        for leg in shipment.legs
+    )
+    leg3 = next((leg for leg in shipment.legs if leg.leg_sequence == 3), None)
+
+    display_driver_id = active_leg.assigned_driver_id if active_leg else None
+    if leg1_done and leg3 and leg3.assigned_driver_id:
+        display_driver_id = leg3.assigned_driver_id
+
     stage_label = "Awaiting Pickup"
     stage_class = "status-awaiting-pickup"
 
@@ -194,7 +204,7 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         consignee=shipment.consignee_address or "",
         contact_name="",
         phone="",
-        assigned_driver=active_leg.assigned_driver_id if active_leg else None,
+        assigned_driver=display_driver_id,
         status=_legacy_status_label(shipment.overall_status),
         shipment=shipment,
         current_leg_type=active_leg.leg_type.value if active_leg and hasattr(active_leg.leg_type, "value") else None,
