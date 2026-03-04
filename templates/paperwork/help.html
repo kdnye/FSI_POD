@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Help & Documentation | FSI{% endblock %}
+
+{% block content %}
+<section class="fsi-card">
+    <h1 class="fsi-display">Help & Documentation</h1>
+    <p>Your current role: <strong>{{ role or 'EMPLOYEE' }}</strong>.</p>
+
+    <section style="margin-top: 1.25rem;">
+        <h2>General User / Driver Instructions</h2>
+
+        <h3>How to Submit a POD</h3>
+        <ul>
+            <li>Open <strong>New POD</strong> from the top navigation.</li>
+            <li>Scan the HWB barcode or type the number manually.</li>
+            <li>Capture the delivery photo and collect the consignee signature on the digital canvas.</li>
+            <li>If you scan an unassigned load, an off-sheet warning will appear and ask for confirmation before reassignment.</li>
+        </ul>
+
+        <h3>Batch Uploads</h3>
+        <p>
+            Use the <strong>Upload</strong> tab to submit up to 100 scanned documents in one batch.
+            Files are sent to Couchdrop for processing.
+        </p>
+    </section>
+
+    {% if is_ops %}
+    <section style="margin-top: 1.25rem;">
+        <h2>Operations Instructions</h2>
+
+        <h3>Load Board Management</h3>
+        <p>Open <strong>Active Load Board</strong> to view current company shipments and status.</p>
+
+        <h3>CSV Uploads</h3>
+        <p>Ops/Admin CSV uploads require the following headers:</p>
+        <p><code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code></p>
+        <p>Use the upload tool to import rows and assign them into the live load workflow.</p>
+
+        <h3>Live Dashboard</h3>
+        <p>Use the Live Ops Dashboard to monitor real-time sync and shipment activity.</p>
+
+        <h3>POD Export</h3>
+        <p>Download the global POD history CSV from the POD History export section.</p>
+    </section>
+    {% endif %}
+
+    {% if is_admin %}
+    <section style="margin-top: 1.25rem;">
+        <h2>Administrator Instructions</h2>
+
+        <h3>User Management</h3>
+        <p>
+            In the Admin Dashboard (<code>/account/admin/users</code>), approve pending employees,
+            assign roles (<code>SUPERVISOR</code>, <code>FINANCE</code>, <code>ADMIN</code>),
+            and toggle Ops membership for qualified users.
+        </p>
+
+        <h3>System Overrides</h3>
+        <p>
+            Use <strong>Resolve</strong> controls to force-cancel loads or mark loads complete when a third-party carrier finishes delivery.
+        </p>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}
