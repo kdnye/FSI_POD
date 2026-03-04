@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 
 from app import db
-from models import LoadBoard, PODRecord, Role, User
+from models import LoadBoard, PODRecord, Role, Shipment, ShipmentGroup, ShipmentLeg, User
 
 
 def _create_user(email: str, role: Role, employee_approved: bool = True) -> int:
@@ -28,8 +28,8 @@ def test_admin_can_upload_load_board_csv(client):
     _login(client, admin_id)
 
     csv_payload = (
-        "hwb_number,shipper,consignee,contact_name,phone,assigned_driver,status\n"
-        "HWB-100,Acme,Receiver One,Jane Doe,555-0001,1,Pending\n"
+        "mawb_number,hwb_number,shipper_address,consignee_address,origin_airport,destination_airport,first_mile_driver_id,status\n"
+        "MAWB-100,HWB-100,Acme,Receiver One,PHX,LAX,1,Pending\n"
     )
 
     response = client.post(
@@ -53,8 +53,8 @@ def test_administrator_can_upload_load_board_csv(client):
     _login(client, admin_id)
 
     csv_payload = (
-        "hwb_number,shipper,consignee,contact_name,phone,assigned_driver,status\n"
-        "HWB-102,Acme,Receiver Three,Alex Doe,555-0004,1,Pending\n"
+        "mawb_number,hwb_number,shipper_address,consignee_address,origin_airport,destination_airport,first_mile_driver_id,status\n"
+        "MAWB-102,HWB-102,Acme,Receiver Three,PHX,LAX,1,Pending\n"
     )
 
     response = client.post(
@@ -74,8 +74,8 @@ def test_non_admin_cannot_upload_load_board_csv(client):
     _login(client, user_id)
 
     csv_payload = (
-        "hwb_number,shipper,consignee,contact_name,phone,assigned_driver,status\n"
-        "HWB-101,Acme,Receiver Two,John Doe,555-0002,1,Pending\n"
+        "mawb_number,hwb_number,shipper_address,consignee_address,origin_airport,destination_airport,first_mile_driver_id,status\n"
+        "MAWB-101,HWB-101,Acme,Receiver Two,PHX,LAX,1,Pending\n"
     )
 
     response = client.post(
@@ -105,8 +105,8 @@ def test_ops_can_upload_load_board_csv(client):
     _login(client, ops_user.id)
 
     csv_payload = (
-        "hwb_number,shipper,consignee,contact_name,phone,assigned_driver,status\n"
-        "HWB-103,Acme,Receiver Four,Casey Doe,555-0005,1,Pending\n"
+        "mawb_number,hwb_number,shipper_address,consignee_address,origin_airport,destination_airport,first_mile_driver_id,status\n"
+        "MAWB-103,HWB-103,Acme,Receiver Four,PHX,LAX,1,Pending\n"
     )
 
     response = client.post(
@@ -588,3 +588,58 @@ def test_off_sheet_completion_with_confirmation_reassigns_and_completes(client, 
     assert pod_record.off_sheet_confirmed is True
     assert "Off-sheet confirmation accepted" in (pod_record.reassignment_note or "")
     assert "Driver picked up off-sheet." in (pod_record.reassignment_note or "")
+
+
+def test_upload_load_board_csv_rejects_invalid_iata_row_and_reports_feedback(client):
+    admin_id = _create_user("admin-invalid-iata@example.com", role=Role.ADMIN)
+    _login(client, admin_id)
+
+    csv_payload = (
+        "mawb_number,hwb_number,shipper_address,consignee_address,origin_airport,destination_airport,first_mile_driver_id,status\n"
+        "MAWB-200,HWB-200,Acme,Receiver One,PH,LAX,1,Pending\n"
+    )
+
+    response = client.post(
+        "/load-board/upload-csv",
+        data={"load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "origin_airport must be a non-empty 3-letter uppercase IATA code" in body
+    assert db.session.get(LoadBoard, "HWB-200") is None
+
+
+def test_upload_load_board_csv_creates_group_shipment_and_default_legs(client, app):
+    admin_id = _create_user("admin-shipment-import@example.com", role=Role.ADMIN)
+    _login(client, admin_id)
+    app.config["LOAD_BOARD_USE_SHIPMENTS"] = True
+
+    try:
+        csv_payload = (
+            "mawb_number,hwb_number,shipper_address,consignee_address,origin_airport,destination_airport,first_mile_driver_id,last_mile_driver_id,status\n"
+            "MAWB-300,HWB-300,Acme,Receiver One,PHX,LAX,11,22,Pending\n"
+        )
+
+        response = client.post(
+            "/load-board/upload-csv",
+            data={"load_board_csv": (BytesIO(csv_payload.encode("utf-8")), "loads.csv")},
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        group = ShipmentGroup.query.filter_by(mawb_number="MAWB-300").first()
+        shipment = Shipment.query.filter_by(hwb_number="HWB-300").first()
+        assert group is not None
+        assert shipment is not None
+        assert shipment.shipment_group_id == group.id
+
+        legs = ShipmentLeg.query.filter_by(shipment_id=shipment.id).order_by(ShipmentLeg.leg_sequence.asc()).all()
+        assert len(legs) == 3
+        assert legs[0].assigned_driver_id == 11
+        assert legs[2].assigned_driver_id == 22
+    finally:
+        app.config["LOAD_BOARD_USE_SHIPMENTS"] = False

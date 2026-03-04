@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, current_app, Response, send_from_directory
 import csv
 import base64
+import re
 import uuid
 from io import BytesIO, StringIO
 from dataclasses import dataclass
@@ -541,76 +542,222 @@ def upload_load_board_csv():
         flash("Unable to read the CSV file.")
         return redirect(url_for("paperwork.active_load_board"))
 
-    required_fields = {"hwb_number", "shipper", "consignee", "contact_name", "phone", "assigned_driver"}
-    if not rows or not required_fields.issubset(set(rows[0].keys())):
-        flash("CSV is missing required headers: hwb_number, shipper, consignee, contact_name, phone, assigned_driver.")
+    required_fields = {
+        "mawb_number",
+        "hwb_number",
+        "shipper_address",
+        "consignee_address",
+        "origin_airport",
+        "destination_airport",
+    }
+    optional_driver_fields = {"first_mile_driver_id", "last_mile_driver_id"}
+    if not rows:
+        flash("CSV is empty.")
         return redirect(url_for("paperwork.active_load_board"))
 
-    upserted_count = 0
-    for row in rows:
+    csv_headers = set(rows[0].keys())
+    if not required_fields.issubset(csv_headers):
+        flash(
+            "CSV is missing required headers: "
+            "mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport."
+        )
+        return redirect(url_for("paperwork.active_load_board"))
+
+    iata_pattern = re.compile(r"^[A-Z]{3}$")
+    row_errors: list[str] = []
+    parsed_rows: list[dict] = []
+    seen_hwb_numbers: set[str] = set()
+
+    for index, row in enumerate(rows, start=2):
+        row_issue_list: list[str] = []
+
+        mawb_number = (row.get("mawb_number") or "").strip()
         hwb_number = (row.get("hwb_number") or "").strip()
-        shipper = (row.get("shipper") or "").strip()
-        consignee = (row.get("consignee") or "").strip()
-        contact_name = (row.get("contact_name") or "").strip()
-        phone = (row.get("phone") or "").strip()
-        assigned_driver_raw = (row.get("assigned_driver") or "").strip()
+        shipper_address = (row.get("shipper_address") or "").strip()
+        consignee_address = (row.get("consignee_address") or "").strip()
+        origin_airport = (row.get("origin_airport") or "").strip().upper()
+        destination_airport = (row.get("destination_airport") or "").strip().upper()
         status = (row.get("status") or "Pending").strip() or "Pending"
 
-        if not all([hwb_number, shipper, consignee, contact_name, phone, assigned_driver_raw]):
+        if not mawb_number:
+            row_issue_list.append("mawb_number is required")
+        if not hwb_number:
+            row_issue_list.append("hwb_number is required")
+        if not shipper_address:
+            row_issue_list.append("shipper_address is required")
+        if not consignee_address:
+            row_issue_list.append("consignee_address is required")
+        if not iata_pattern.match(origin_airport):
+            row_issue_list.append("origin_airport must be a non-empty 3-letter uppercase IATA code")
+        if not iata_pattern.match(destination_airport):
+            row_issue_list.append("destination_airport must be a non-empty 3-letter uppercase IATA code")
+
+        if hwb_number in seen_hwb_numbers:
+            row_issue_list.append("duplicate hwb_number in CSV")
+        elif hwb_number:
+            seen_hwb_numbers.add(hwb_number)
+
+        first_mile_driver = None
+        last_mile_driver = None
+
+        for field_name in optional_driver_fields:
+            raw_value = (row.get(field_name) or "").strip()
+            if not raw_value:
+                continue
+            try:
+                parsed_value = int(raw_value)
+            except ValueError:
+                row_issue_list.append(f"{field_name} must be an integer if provided")
+                continue
+
+            if field_name == "first_mile_driver_id":
+                first_mile_driver = parsed_value
+            if field_name == "last_mile_driver_id":
+                last_mile_driver = parsed_value
+
+        if row_issue_list:
+            row_errors.append(f"Row {index}: {'; '.join(row_issue_list)}")
             continue
 
+        parsed_rows.append(
+            {
+                "mawb_number": mawb_number,
+                "hwb_number": hwb_number,
+                "shipper_address": shipper_address,
+                "consignee_address": consignee_address,
+                "origin_airport": origin_airport,
+                "destination_airport": destination_airport,
+                "status": status,
+                "first_mile_driver_id": first_mile_driver,
+                "last_mile_driver_id": last_mile_driver,
+            }
+        )
+
+    upserted_count = 0
+    invalid_hwb_numbers: set[str] = set()
+    if parsed_rows:
+        mawb_numbers = {item["mawb_number"] for item in parsed_rows}
+        hwb_numbers = {item["hwb_number"] for item in parsed_rows}
+        shipment_groups = {
+            group.mawb_number: group
+            for group in ShipmentGroup.query.filter(ShipmentGroup.mawb_number.in_(mawb_numbers)).all()
+        }
+        shipments = {
+            shipment.hwb_number: shipment
+            for shipment in Shipment.query.filter(Shipment.hwb_number.in_(hwb_numbers)).all()
+        }
+
+        for parsed_row in parsed_rows:
+            existing_shipment = shipments.get(parsed_row["hwb_number"])
+            if (
+                existing_shipment
+                and existing_shipment.overall_status not in {ShipmentStatus.CANCELLED, ShipmentStatus.DELIVERED}
+                and existing_shipment.shipment_group
+                and existing_shipment.shipment_group.mawb_number != parsed_row["mawb_number"]
+            ):
+                row_errors.append(
+                    f"Row for HWB {parsed_row['hwb_number']}: hwb_number already belongs to active shipment "
+                    f"under MAWB {existing_shipment.shipment_group.mawb_number}."
+                )
+                invalid_hwb_numbers.add(parsed_row["hwb_number"])
+
+    applied_rows = [row for row in parsed_rows if row["hwb_number"] not in invalid_hwb_numbers]
+
+    if applied_rows:
         try:
-            assigned_driver = int(assigned_driver_raw)
-        except ValueError:
-            continue
+            with db.session.begin_nested():
+                for parsed_row in applied_rows:
+                    shipment_group = ShipmentGroup.query.filter_by(mawb_number=parsed_row["mawb_number"]).first()
+                    if not shipment_group:
+                        shipment_group = ShipmentGroup(
+                            mawb_number=parsed_row["mawb_number"],
+                            carrier="CSV_IMPORT",
+                        )
+                        db.session.add(shipment_group)
+                        db.session.flush()
 
-        if use_shipments_for_load_board():
-            shipment = Shipment.query.filter_by(hwb_number=hwb_number).first()
-            if not shipment:
-                legacy_group = ShipmentGroup.query.filter_by(mawb_number="LEGACY-LOAD-BOARD").first()
-                if not legacy_group:
-                    legacy_group = ShipmentGroup(mawb_number="LEGACY-LOAD-BOARD", carrier="LEGACY")
-                    db.session.add(legacy_group)
-                    db.session.flush()
-                shipment = Shipment(hwb_number=hwb_number, shipment_group_id=legacy_group.id)
-                db.session.add(shipment)
-                db.session.flush()
-                db.session.add(ShipmentLeg(
-                    shipment_id=shipment.id,
-                    leg_sequence=1,
-                    leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
-                    from_location_type="SHIPPER",
-                    to_location_type="ORIGIN_AIRPORT",
-                    assigned_driver_id=assigned_driver,
-                    status=ShipmentLegStatus.ASSIGNED,
-                ))
-            shipment.shipper_address = shipper
-            shipment.consignee_address = consignee
-            shipment.overall_status = {
-                "Delivered": ShipmentStatus.DELIVERED,
-                "Picked Up": ShipmentStatus.PICKED_UP,
-                "In Progress": ShipmentStatus.IN_PROGRESS,
-            }.get(status, ShipmentStatus.PENDING)
-            active_leg = _shipment_current_leg(shipment)
-            if active_leg:
-                active_leg.assigned_driver_id = assigned_driver
-                active_leg.status = ShipmentLegStatus.ASSIGNED
-        else:
-            entry = db.session.get(LoadBoard, hwb_number)
-            if not entry:
-                entry = LoadBoard(hwb_number=hwb_number)
-                db.session.add(entry)
+                    shipment_group.origin_airport = parsed_row["origin_airport"]
+                    shipment_group.destination_airport = parsed_row["destination_airport"]
 
-            entry.shipper = shipper
-            entry.consignee = consignee
-            entry.contact_name = contact_name
-            entry.phone = phone
-            entry.assigned_driver = assigned_driver
-            entry.status = status
-        upserted_count += 1
+                    shipment = Shipment.query.filter_by(hwb_number=parsed_row["hwb_number"]).first()
+                    if not shipment:
+                        shipment = Shipment(
+                            hwb_number=parsed_row["hwb_number"],
+                            shipment_group_id=shipment_group.id,
+                        )
+                        db.session.add(shipment)
+                        db.session.flush()
 
-    db.session.commit()
+                    shipment.shipment_group_id = shipment_group.id
+                    shipment.shipper_address = parsed_row["shipper_address"]
+                    shipment.consignee_address = parsed_row["consignee_address"]
+                    shipment.overall_status = {
+                        "Delivered": ShipmentStatus.DELIVERED,
+                        "Picked Up": ShipmentStatus.PICKED_UP,
+                        "In Progress": ShipmentStatus.IN_PROGRESS,
+                    }.get(parsed_row["status"], ShipmentStatus.PENDING)
+
+                    if not shipment.legs:
+                        db.session.add_all(
+                            [
+                                ShipmentLeg(
+                                    shipment_id=shipment.id,
+                                    leg_sequence=1,
+                                    leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
+                                    from_location_type="SHIPPER",
+                                    to_location_type="ORIGIN_AIRPORT",
+                                    from_address=parsed_row["shipper_address"],
+                                    to_airport=parsed_row["origin_airport"],
+                                    assigned_driver_id=parsed_row["first_mile_driver_id"],
+                                    status=ShipmentLegStatus.ASSIGNED if parsed_row["first_mile_driver_id"] else ShipmentLegStatus.PENDING,
+                                ),
+                                ShipmentLeg(
+                                    shipment_id=shipment.id,
+                                    leg_sequence=2,
+                                    leg_type=ShipmentLegType.AIRPORT_TO_AIRPORT,
+                                    from_location_type="ORIGIN_AIRPORT",
+                                    to_location_type="DESTINATION_AIRPORT",
+                                    from_airport=parsed_row["origin_airport"],
+                                    to_airport=parsed_row["destination_airport"],
+                                    status=ShipmentLegStatus.PENDING,
+                                ),
+                                ShipmentLeg(
+                                    shipment_id=shipment.id,
+                                    leg_sequence=3,
+                                    leg_type=ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE,
+                                    from_location_type="DESTINATION_AIRPORT",
+                                    to_location_type="CONSIGNEE",
+                                    from_airport=parsed_row["destination_airport"],
+                                    to_address=parsed_row["consignee_address"],
+                                    assigned_driver_id=parsed_row["last_mile_driver_id"],
+                                    status=ShipmentLegStatus.ASSIGNED if parsed_row["last_mile_driver_id"] else ShipmentLegStatus.PENDING,
+                                ),
+                            ]
+                        )
+
+                    if not use_shipments_for_load_board():
+                        entry = db.session.get(LoadBoard, parsed_row["hwb_number"])
+                        if not entry:
+                            entry = LoadBoard(hwb_number=parsed_row["hwb_number"])
+                            db.session.add(entry)
+
+                        entry.shipper = parsed_row["shipper_address"]
+                        entry.consignee = parsed_row["consignee_address"]
+                        entry.contact_name = "CSV Import"
+                        entry.phone = "N/A"
+                        entry.assigned_driver = parsed_row["first_mile_driver_id"] or parsed_row["last_mile_driver_id"]
+                        entry.status = parsed_row["status"]
+
+                    upserted_count += 1
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash("Load board CSV failed due to a transaction error. No rows were applied.")
+            return redirect(url_for("paperwork.active_load_board"))
+
     flash(f"Load board CSV processed. {upserted_count} rows applied.")
+    for row_error in row_errors:
+        flash(row_error)
     return redirect(url_for("paperwork.active_load_board"))
 
 
