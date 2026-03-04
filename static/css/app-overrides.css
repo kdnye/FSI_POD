@@ -231,6 +231,18 @@
   background: color-mix(in srgb, var(--color-border) 24%, transparent);
 }
 
+.fsi-load-board-table td.fsi-entity-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: 300px;
+  white-space: normal;
+}
+
+.fsi-load-board-table td .fsi-entity-address {
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, white);
+}
+
 .pod-event-fieldset {
   margin-bottom: 1.5rem;
 }

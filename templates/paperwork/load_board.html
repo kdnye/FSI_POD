@@ -66,8 +66,24 @@
                 {% for load in loads %}
                 <tr>
                     <td>{{ load.hwb_number }}</td>
-                    <td>{{ load.shipper }}</td>
-                    <td>{{ load.consignee }}</td>
+                    {% set shipper_parts = (load.shipper or '').split(', ', 1) %}
+                    {% set shipper_name = shipper_parts[0] if shipper_parts else '—' %}
+                    {% set shipper_address = shipper_parts[1] if shipper_parts|length > 1 else '' %}
+                    <td class="fsi-entity-cell">
+                        <span>{{ shipper_name or '—' }}</span>
+                        {% if shipper_address %}
+                        <span class="fsi-entity-address">{{ shipper_address }}</span>
+                        {% endif %}
+                    </td>
+                    {% set consignee_parts = (load.consignee or '').split(', ', 1) %}
+                    {% set consignee_name = consignee_parts[0] if consignee_parts else '—' %}
+                    {% set consignee_address = consignee_parts[1] if consignee_parts|length > 1 else '' %}
+                    <td class="fsi-entity-cell">
+                        <span>{{ consignee_name or '—' }}</span>
+                        {% if consignee_address %}
+                        <span class="fsi-entity-address">{{ consignee_address }}</span>
+                        {% endif %}
+                    </td>
                     <td>{{ load.contact_name }}</td>
                     <td>{{ load.current_leg_driver_name or '—' }}</td>
                     {% set status_class = load.stage_class if load.stage_class is defined and load.stage_class else (
