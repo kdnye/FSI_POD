@@ -309,3 +309,16 @@ body {
     min-width: 180px;
     max-width: 250px;
 }
+
+.fsi-table th,
+.fsi-table td {
+    padding: 0.75rem;
+    vertical-align: top; /* Keeps stacked text aligned at the top */
+    border-bottom: 1px solid var(--color-border);
+}
+
+.fsi-load-board-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+}
