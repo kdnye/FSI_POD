@@ -119,6 +119,9 @@ def apply_pod_transition(
         if leg1.status == ShipmentLegStatus.COMPLETED:
             raise ShipmentTransitionError("Cannot start shipper pickup: leg 1 is already completed.")
 
+        if not leg1.assigned_driver_id:
+            leg1.assigned_driver_id = actor_user_id
+
         from_status = leg1.status
         if leg1.status in {ShipmentLegStatus.PENDING, ShipmentLegStatus.ASSIGNED}:
             leg1.status = ShipmentLegStatus.IN_PROGRESS
@@ -157,7 +160,7 @@ def apply_pod_transition(
         from_status = leg1.status
         leg1.status = ShipmentLegStatus.COMPLETED
         leg1.completed_at_utc = now_utc
-        shipment.current_leg_index = max(shipment.current_leg_index, 2)
+        shipment.current_leg_index = 2
         shipment.overall_status = ShipmentStatus.PICKED_UP
         _record_leg_transition(
             shipment=shipment,
