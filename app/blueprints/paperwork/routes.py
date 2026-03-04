@@ -7,6 +7,7 @@ from io import BytesIO, StringIO
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+from sqlalchemy import or_
 from werkzeug.datastructures import FileStorage
 
 from app import db
@@ -214,8 +215,12 @@ def get_load_entries_by_identifier(identifier: str) -> list[LegacyLoadView | Loa
         return []
 
     if not use_shipments_for_load_board():
-        entry = db.session.get(LoadBoard, normalized)
-        return [entry] if entry else []
+        return (
+            LoadBoard.query
+            .filter(or_(LoadBoard.hwb_number == normalized, LoadBoard.mawb_number == normalized))
+            .order_by(LoadBoard.hwb_number.asc())
+            .all()
+        )
 
     shipment = Shipment.query.filter_by(hwb_number=normalized).first()
     if shipment:
@@ -515,9 +520,9 @@ def log_pod_event():
         return redirect(url_for("paperwork.log_pod_event"))
 
     if is_ajax:
-        return jsonify({"success": True, "message": f"Event logged successfully for {processed_count} shipment(s)."}), 200
-    
-    flash(f"POD Event logged for {processed_count} shipment(s).")
+        return jsonify({"success": True, "message": f"Recorded event for {processed_count} shipments."}), 200
+
+    flash(f"Recorded event for {processed_count} shipments.")
     return redirect(url_for("paperwork.log_pod_event"))
 
 
@@ -775,6 +780,11 @@ def upload_load_board_csv():
         )
         return redirect(url_for("paperwork.active_load_board"))
 
+    csv_to_model_field_map = {
+        "HWB": "hwb_number",
+        "Mawb#": "mawb_number",
+    }
+
     def build_address(row: dict[str, str | None], name_key: str, extra_keys: list[str]) -> str:
         name_value = (row.get(name_key) or "").strip()
         extra_parts = [(row.get(key) or "").strip() for key in extra_keys]
@@ -846,8 +856,8 @@ def upload_load_board_csv():
 
         parsed_rows.append(
             {
-                "mawb_number": mawb_number,
-                "hwb_number": hwb_number,
+                csv_to_model_field_map["Mawb#"]: mawb_number,
+                csv_to_model_field_map["HWB"]: hwb_number,
                 "shipper_address": shipper_address,
                 "consignee_address": consignee_address,
                 "origin_airport": origin_airport,
@@ -969,6 +979,7 @@ def upload_load_board_csv():
 
                         entry.shipper = parsed_row["shipper_address"]
                         entry.consignee = parsed_row["consignee_address"]
+                        entry.mawb_number = parsed_row["mawb_number"]
                         entry.contact_name = "CSV Import"
                         entry.phone = "N/A"
                         entry.assigned_driver = parsed_row["first_mile_driver_id"]
