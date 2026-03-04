@@ -1,7 +1,9 @@
 import logging
 import os
 import uuid
+from datetime import timedelta
 
+from flask import current_app, has_app_context
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
@@ -46,3 +48,46 @@ class GCSService:
         except Exception as exc:
             logging.error("POD upload failed for %s: %s", file_obj.filename, str(exc))
             return None
+
+
+def _get_storage_module():
+    try:
+        from google.cloud import storage
+    except ImportError as exc:
+        raise RuntimeError("google-cloud-storage is required to generate signed URLs.") from exc
+    return storage
+
+
+def generate_signed_url(blob_name: str, expiration_days: int = 7) -> str | None:
+    cleaned_blob_name = str(blob_name or "").strip()
+    if not cleaned_blob_name:
+        return None
+
+    cleaned_blob_name = cleaned_blob_name.lstrip("/")
+    if cleaned_blob_name.startswith("POD/"):
+        cleaned_blob_name = cleaned_blob_name[4:]
+    if cleaned_blob_name in {"", "."} or ".." in cleaned_blob_name.split("/"):
+        return None
+
+    bucket_name = ""
+    if has_app_context():
+        bucket_name = current_app.config.get("GCS_BUCKET_NAME", "").strip()
+    if not bucket_name:
+        bucket_name = os.getenv("GCS_BUCKET_NAME", "").strip()
+    if not bucket_name:
+        logging.warning("Signed URL generation skipped: GCS_BUCKET_NAME is not configured.")
+        return None
+
+    try:
+        storage = _get_storage_module()
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(cleaned_blob_name)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(days=expiration_days),
+            method="GET",
+        )
+    except Exception as exc:
+        logging.error("Failed to generate signed URL for blob '%s': %s", cleaned_blob_name, exc)
+        return None

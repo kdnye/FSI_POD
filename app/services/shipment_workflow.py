@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from app import db
 from app.services.tasks import enqueue_email_task
-from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus, User
+from models import PODRecord, Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus, User
 
 
 class ShipmentTransitionError(ValueError):
@@ -62,6 +62,65 @@ def _record_leg_transition(
     )
 
 
+def _resolve_location_name(action: str, leg1: ShipmentLeg | None, leg3: ShipmentLeg | None) -> str | None:
+    if action == "SHIPPER_PICKUP" and leg1:
+        return leg1.from_address or leg1.from_airport or leg1.to_address or leg1.to_airport
+    if action == "ORIGIN_AIRPORT_DROP" and leg1:
+        return leg1.to_airport or leg1.to_address or leg1.from_airport or leg1.from_address
+    if action == "DESTINATION_AIRPORT_PICKUP" and leg3:
+        return leg3.from_airport or leg3.from_address or leg3.to_airport or leg3.to_address
+    if action == "CONSIGNEE_DROP" and leg3:
+        return leg3.to_address or leg3.to_airport or leg3.from_address or leg3.from_airport
+    return None
+
+
+def _latest_pod_assets(shipment_id: int, action: str, actor_user_id: int) -> tuple[str | None, str | None]:
+    record = (
+        PODRecord.query.filter_by(shipment_id=shipment_id, action_type=action, driver_id=actor_user_id)
+        .order_by(PODRecord.timestamp.desc(), PODRecord.id.desc())
+        .first()
+    )
+    if record is None:
+        return None, None
+    return record.delivery_photo, record.signature_image
+
+
+def _enqueue_pod_notification(
+    *,
+    shipment: Shipment,
+    action: str,
+    actor_user_id: int,
+    leg1: ShipmentLeg | None,
+    leg3: ShipmentLeg | None,
+) -> None:
+    driver_user = db.session.get(User, actor_user_id)
+    if driver_user is None:
+        return
+
+    photo_blob_name, signature_blob_name = _latest_pod_assets(shipment.id, action, actor_user_id)
+    try:
+        enqueue_email_task(
+            shipment.id,
+            action,
+            actor_user_id,
+            shipper_email=shipment.shipper_email,
+            consignee_email=shipment.consignee_email,
+            hwb_number=shipment.hwb_number,
+            location_name=_resolve_location_name(action, leg1, leg3),
+            driver_name=driver_user.name,
+            photo_blob_name=photo_blob_name,
+            signature_blob_name=signature_blob_name,
+        )
+    except TypeError:
+        enqueue_email_task(
+            shipment.id,
+            action,
+            actor_user_id,
+            shipper_email=shipment.shipper_email,
+            consignee_email=shipment.consignee_email,
+        )
+
+
 def apply_pod_transition(
     *,
     shipment: Shipment,
@@ -100,15 +159,7 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
-        driver_user = db.session.get(User, actor_user_id)
-        if driver_user is not None:
-            enqueue_email_task(
-                shipment.id,
-                action,
-                actor_user_id,
-                shipper_email=shipment.shipper_email,
-                consignee_email=shipment.consignee_email,
-            )
+        _enqueue_pod_notification(shipment=shipment, action=action, actor_user_id=actor_user_id, leg1=leg1, leg3=leg3)
         return action
 
     if action == "ORIGIN_AIRPORT_DROP":
@@ -133,15 +184,7 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
-        driver_user = db.session.get(User, actor_user_id)
-        if driver_user is not None:
-            enqueue_email_task(
-                shipment.id,
-                action,
-                actor_user_id,
-                shipper_email=shipment.shipper_email,
-                consignee_email=shipment.consignee_email,
-            )
+        _enqueue_pod_notification(shipment=shipment, action=action, actor_user_id=actor_user_id, leg1=leg1, leg3=leg3)
         return action
 
     if action == "DESTINATION_AIRPORT_PICKUP":
@@ -170,15 +213,7 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
-        driver_user = db.session.get(User, actor_user_id)
-        if driver_user is not None:
-            enqueue_email_task(
-                shipment.id,
-                action,
-                actor_user_id,
-                shipper_email=shipment.shipper_email,
-                consignee_email=shipment.consignee_email,
-            )
+        _enqueue_pod_notification(shipment=shipment, action=action, actor_user_id=actor_user_id, leg1=leg1, leg3=leg3)
         return action
 
     if action == "CONSIGNEE_DROP":
@@ -201,15 +236,7 @@ def apply_pod_transition(
             longitude=longitude,
             event_at_utc=now_utc,
         )
-        driver_user = db.session.get(User, actor_user_id)
-        if driver_user is not None:
-            enqueue_email_task(
-                shipment.id,
-                action,
-                actor_user_id,
-                shipper_email=shipment.shipper_email,
-                consignee_email=shipment.consignee_email,
-            )
+        _enqueue_pod_notification(shipment=shipment, action=action, actor_user_id=actor_user_id, leg1=leg1, leg3=leg3)
         return action
 
     raise ShipmentTransitionError("Unsupported POD transition requested.")
