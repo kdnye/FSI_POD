@@ -174,6 +174,10 @@ class LegacyLoadView:
     assigned_driver: int | None
     status: str
     shipment: Shipment | None = None
+    current_leg_type: str | None = None
+    current_leg_status: str | None = None
+    stage_label: str = "Awaiting Pickup"
+    stage_class: str = "status-awaiting-pickup"
 
 
 def use_shipments_for_load_board() -> bool:
@@ -201,6 +205,24 @@ def _legacy_status_label(status: ShipmentStatus | str | None) -> str:
 
 def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
     active_leg = _shipment_current_leg(shipment)
+    stage_label = "Awaiting Pickup"
+    stage_class = "status-awaiting-pickup"
+
+    if shipment.overall_status == ShipmentStatus.DELIVERED:
+        stage_label = "Delivered"
+        stage_class = "status-delivered"
+    elif active_leg:
+        stage_by_leg = {
+            ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT: ("At Origin Airport", "status-at-origin-airport"),
+            ShipmentLegType.AIRPORT_TO_AIRPORT: ("In Air", "status-in-air"),
+            ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE: ("Out for Delivery", "status-out-for-delivery"),
+        }
+        stage_label, stage_class = stage_by_leg.get(active_leg.leg_type, (stage_label, stage_class))
+
+        if active_leg.leg_type == ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE and active_leg.status == ShipmentLegStatus.PENDING:
+            stage_label = "At Destination Airport"
+            stage_class = "status-at-destination-airport"
+
     return LegacyLoadView(
         hwb_number=shipment.hwb_number,
         shipper=shipment.shipper_address or "",
@@ -210,6 +232,10 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         assigned_driver=active_leg.assigned_driver_id if active_leg else None,
         status=_legacy_status_label(shipment.overall_status),
         shipment=shipment,
+        current_leg_type=active_leg.leg_type.value if active_leg and hasattr(active_leg.leg_type, "value") else None,
+        current_leg_status=active_leg.status.value if active_leg and hasattr(active_leg.status, "value") else None,
+        stage_label=stage_label,
+        stage_class=stage_class,
     )
 
 
@@ -262,14 +288,18 @@ def assign_load_to_current_driver(load_entry: LegacyLoadView | LoadBoard) -> Non
             active_leg.status = ShipmentLegStatus.ASSIGNED
 
 
-def query_loads(full_board_access: bool):
+def query_loads(full_board_access: bool, include_delivered: bool = True):
     if not use_shipments_for_load_board():
         load_query = LoadBoard.query
         if not full_board_access:
             load_query = load_query.filter_by(assigned_driver=g.current_user.id)
+        if not include_delivered:
+            load_query = load_query.filter(LoadBoard.status != "Delivered")
         return load_query.order_by(LoadBoard.hwb_number.asc()).all()
 
     shipment_query = Shipment.query.order_by(Shipment.hwb_number.asc())
+    if not include_delivered:
+        shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.DELIVERED)
     shipments = shipment_query.all()
     views = []
     for shipment in shipments:
@@ -541,7 +571,8 @@ def scan_hwb():
 def active_load_board():
     ensure_hybrid_pod_tables()
     full_board_access = is_ops_or_admin_user()
-    loads = query_loads(full_board_access)
+    show_delivered = request.args.get("show_delivered", "0") == "1"
+    loads = query_loads(full_board_access, include_delivered=show_delivered)
 
     latest_delivery_by_hwb: dict[str, PODRecord] = {}
     load_hwbs = [load.hwb_number for load in loads if load.hwb_number]
@@ -572,6 +603,7 @@ def active_load_board():
         title="Active Load Board",
         loads=loads,
         full_board_access=full_board_access,
+        show_delivered=show_delivered,
     )
 
 

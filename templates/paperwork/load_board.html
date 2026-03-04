@@ -6,6 +6,23 @@
 {% block content %}
 <section class="fsi-card fsi-card--load-board">
     <h1 class="fsi-display">{{ "Active Load Board" if full_board_access else "My Active Loads" }}</h1>
+    <div class="fsi-load-board-actions">
+        <a class="fsi-secondary-btn" href="{{ url_for('paperwork.active_load_board', show_delivered='0' if show_delivered else '1') }}">
+            {{ 'Hide Delivered' if show_delivered else 'Show Delivered' }}
+        </a>
+    </div>
+
+    <section class="fsi-load-status-legend" aria-label="Load status legend">
+        <h2 class="fsi-load-status-legend__title">Status Legend</h2>
+        <ul class="fsi-load-status-legend__list">
+            <li><span class="fsi-status-badge status-awaiting-pickup">Awaiting Pickup</span></li>
+            <li><span class="fsi-status-badge status-at-origin-airport">At Origin Airport</span></li>
+            <li><span class="fsi-status-badge status-in-air">In Air</span></li>
+            <li><span class="fsi-status-badge status-at-destination-airport">At Destination Airport</span></li>
+            <li><span class="fsi-status-badge status-out-for-delivery">Out for Delivery</span></li>
+            <li><span class="fsi-status-badge status-delivered">Delivered</span></li>
+        </ul>
+    </section>
 
     {% if full_board_access %}
     <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
@@ -31,6 +48,8 @@
                     <th>Contact</th>
                     <th>Phone</th>
                     <th>Status</th>
+                    <th>Current Leg</th>
+                    <th>Leg Status</th>
                     <th>POD Photo</th>
                     <th>POD Signature</th>
                     <th>Printed Name</th>
@@ -44,7 +63,16 @@
                     <td>{{ load.consignee }}</td>
                     <td>{{ load.contact_name }}</td>
                     <td>{{ load.phone }}</td>
-                    <td>{{ load.status }}</td>
+                    {% set status_class = load.stage_class if load.stage_class is defined and load.stage_class else (
+                        'status-delivered' if load.status == 'Delivered' else
+                        'status-in-air' if load.status == 'Picked Up' else
+                        'status-at-origin-airport' if load.status == 'In Progress' else
+                        'status-awaiting-pickup'
+                    ) %}
+                    {% set status_label = load.stage_label if load.stage_label is defined and load.stage_label else load.status %}
+                    <td><span class="fsi-status-badge {{ status_class }}">{{ status_label }}</span></td>
+                    <td>{{ (load.current_leg_type or '—') if load.current_leg_type is defined else '—' }}</td>
+                    <td>{{ (load.current_leg_status or '—') if load.current_leg_status is defined else '—' }}</td>
                     <td>
                         {% if load.pod_delivery_photo %}
                         <a href="{{ load.pod_delivery_photo }}" target="_blank" rel="noopener noreferrer">View photo</a>
