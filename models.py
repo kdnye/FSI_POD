@@ -281,7 +281,7 @@ class PODRecord(db.Model):
     __tablename__ = "pod_records"
 
     id = db.Column(db.Integer, primary_key=True)
-    hwb_number = db.Column(db.String(100), db.ForeignKey("load_board.hwb_number"), index=True, nullable=True)
+    hwb_number = db.Column(db.String(100), index=True, nullable=True)
     delivery_photo = db.Column(db.String(512), nullable=False)
     signature_image = db.Column(db.String(512), nullable=False)
     recipient_name = db.Column(db.String(120), nullable=False)
