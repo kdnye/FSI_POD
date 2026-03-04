@@ -597,6 +597,7 @@ def scan_hwb():
             "warning_message": warning_message,
             "shipment_count": shipment_count,
             "matched_by": "hwb" if shipment_count == 1 and summary_entry.hwb_number == hwb_number else "mawb",
+            "hwbs": [entry.hwb_number for entry in target_load_entries if entry.hwb_number],
         }
     ), 200
 

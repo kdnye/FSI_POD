@@ -24,6 +24,10 @@
             <p><strong>Consignee:</strong> <span id="summary-consignee">-</span></p>
             <p><strong>Contact:</strong> <span id="summary-contact">-</span></p>
             <p><strong>Phone:</strong> <span id="summary-phone">-</span></p>
+            <div id="mawb-hwb-list-container" style="display: none; margin-top: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #3f76c7; background: rgba(63, 118, 199, 0.15);">
+                <strong>Matched MAWB - Included HWBs</strong>
+                <ul id="mawb-hwb-list"></ul>
+            </div>
         </div>
 
         <div id="manual-pod-fields" class="fsi-form-grid pod-event-fieldset" style="display: none;">
@@ -107,6 +111,8 @@ document.addEventListener("DOMContentLoaded", function() {
     const offSheetWarningText = document.getElementById('off-sheet-warning-text');
     const offSheetConfirmCheckbox = document.getElementById('off-sheet-confirm-checkbox');
     const reassignmentNoteInput = document.getElementById('reassignment_note');
+    const mawbListContainer = document.getElementById('mawb-hwb-list-container');
+    const mawbList = document.getElementById('mawb-hwb-list');
     let warningRequired = false;
 
     function resetManualPodFields() {
@@ -122,6 +128,23 @@ document.addEventListener("DOMContentLoaded", function() {
         reassignmentNoteInput.value = '';
         offSheetWarningText.textContent = '';
         offSheetWarningShell.style.display = 'none';
+    }
+
+    function renderMawbMatch(payload) {
+        const hwbs = Array.isArray(payload.hwbs) ? payload.hwbs.filter(Boolean) : [];
+        if (payload.matched_by !== 'mawb' || hwbs.length === 0) {
+            mawbListContainer.style.display = 'none';
+            mawbList.innerHTML = '';
+            return;
+        }
+
+        mawbList.innerHTML = '';
+        for (const hwb of hwbs) {
+            const listItem = document.createElement('li');
+            listItem.textContent = hwb;
+            mawbList.appendChild(listItem);
+        }
+        mawbListContainer.style.display = 'block';
     }
 
     async function lookupHwb() {
@@ -143,6 +166,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const payload = await response.json();
         if (!response.ok) {
             modeText.textContent = payload.error || 'Lookup failed.';
+            modeText.style.color = 'red';
             return;
         }
 
@@ -154,7 +178,14 @@ document.addEventListener("DOMContentLoaded", function() {
             summaryShell.style.display = 'block';
             manualPodFieldsShell.style.display = 'none';
             resetManualPodFields();
-            modeText.textContent = 'Enhanced mode: Load Board record found.';
+            renderMawbMatch(payload);
+            if (payload.matched_by === 'mawb') {
+                modeText.textContent = `Enhanced mode: MAWB matched (${payload.shipment_count} shipment${payload.shipment_count === 1 ? '' : 's'}).`;
+                modeText.style.color = '#3f76c7';
+            } else {
+                modeText.textContent = 'Enhanced mode: Load Board record found.';
+                modeText.style.color = 'green';
+            }
 
             warningRequired = Boolean(payload.warning_required);
             if (warningRequired) {
@@ -167,7 +198,10 @@ document.addEventListener("DOMContentLoaded", function() {
         } else {
             summaryShell.style.display = 'none';
             manualPodFieldsShell.style.display = 'block';
+            mawbListContainer.style.display = 'none';
+            mawbList.innerHTML = '';
             modeText.textContent = 'Base mode: No load board match, manual POD will be recorded.';
+            modeText.style.color = '';
             resetWarningState();
         }
     }
