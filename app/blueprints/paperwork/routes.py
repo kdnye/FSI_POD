@@ -828,6 +828,36 @@ def upload_load_board_csv():
             return None
         return driver_map.get(cleaned_name)
 
+    def map_legacy_status_to_leg_state(legacy_status: str) -> dict:
+        normalized_status = (legacy_status or "").strip()
+        status_map = {
+            "Awaiting Pickup": {
+                "overall_status": ShipmentStatus.PENDING,
+                "current_leg_index": 1,
+                "leg1_status": "pending_or_assigned",
+                "leg3_status": "pending_or_assigned",
+            },
+            "In Progress": {
+                "overall_status": ShipmentStatus.IN_PROGRESS,
+                "current_leg_index": 1,
+                "leg1_status": ShipmentLegStatus.IN_PROGRESS,
+                "leg3_status": "pending_or_assigned",
+            },
+            "Picked Up": {
+                "overall_status": ShipmentStatus.PICKED_UP,
+                "current_leg_index": 2,
+                "leg1_status": ShipmentLegStatus.COMPLETED,
+                "leg3_status": "pending_or_assigned",
+            },
+            "Delivered": {
+                "overall_status": ShipmentStatus.DELIVERED,
+                "current_leg_index": 3,
+                "leg1_status": ShipmentLegStatus.COMPLETED,
+                "leg3_status": ShipmentLegStatus.COMPLETED,
+            },
+        }
+        return status_map.get(normalized_status, status_map["Awaiting Pickup"])
+
     iata_pattern = re.compile(r"^[A-Z]{3}$")
     row_errors: list[str] = []
     parsed_rows: list[dict] = []
@@ -918,6 +948,7 @@ def upload_load_board_csv():
         try:
             with db.session.begin_nested():
                 for parsed_row in applied_rows:
+                    now_utc = datetime.now(timezone.utc)
                     shipment_group = ShipmentGroup.query.filter_by(mawb_number=parsed_row["mawb_number"]).first()
                     if not shipment_group:
                         shipment_group = ShipmentGroup(
@@ -942,50 +973,86 @@ def upload_load_board_csv():
                     shipment.shipment_group_id = shipment_group.id
                     shipment.shipper_address = parsed_row["shipper_address"]
                     shipment.consignee_address = parsed_row["consignee_address"]
-                    shipment.overall_status = {
-                        "Delivered": ShipmentStatus.DELIVERED,
-                        "Picked Up": ShipmentStatus.PICKED_UP,
-                        "In Progress": ShipmentStatus.IN_PROGRESS,
-                        "Awaiting Pickup": ShipmentStatus.PENDING,
-                    }.get(parsed_row["status"], ShipmentStatus.PENDING)
+                    status_reconciliation = map_legacy_status_to_leg_state(parsed_row["status"])
+                    shipment.overall_status = status_reconciliation["overall_status"]
+                    shipment.current_leg_index = status_reconciliation["current_leg_index"]
 
-                    if not shipment.legs:
-                        db.session.add_all(
-                            [
-                                ShipmentLeg(
-                                    shipment_id=shipment.id,
-                                    leg_sequence=1,
-                                    leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
-                                    from_location_type="SHIPPER",
-                                    to_location_type="ORIGIN_AIRPORT",
-                                    from_address=parsed_row["shipper_address"],
-                                    to_airport=parsed_row["origin_airport"],
-                                    assigned_driver_id=parsed_row["first_mile_driver_id"],
-                                    status=ShipmentLegStatus.ASSIGNED if parsed_row["first_mile_driver_id"] else ShipmentLegStatus.PENDING,
-                                ),
-                                ShipmentLeg(
-                                    shipment_id=shipment.id,
-                                    leg_sequence=2,
-                                    leg_type=ShipmentLegType.AIRPORT_TO_AIRPORT,
-                                    from_location_type="ORIGIN_AIRPORT",
-                                    to_location_type="DESTINATION_AIRPORT",
-                                    from_airport=parsed_row["origin_airport"],
-                                    to_airport=parsed_row["destination_airport"],
-                                    status=ShipmentLegStatus.PENDING,
-                                ),
-                                ShipmentLeg(
-                                    shipment_id=shipment.id,
-                                    leg_sequence=3,
-                                    leg_type=ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE,
-                                    from_location_type="DESTINATION_AIRPORT",
-                                    to_location_type="CONSIGNEE",
-                                    from_airport=parsed_row["destination_airport"],
-                                    to_address=parsed_row["consignee_address"],
-                                    assigned_driver_id=parsed_row["last_mile_driver_id"],
-                                    status=ShipmentLegStatus.ASSIGNED if parsed_row["last_mile_driver_id"] else ShipmentLegStatus.PENDING,
-                                ),
-                            ]
+                    legs_by_sequence = {leg.leg_sequence: leg for leg in shipment.legs}
+                    if 1 not in legs_by_sequence:
+                        leg1 = ShipmentLeg(
+                            shipment_id=shipment.id,
+                            leg_sequence=1,
+                            leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
+                            from_location_type="SHIPPER",
+                            to_location_type="ORIGIN_AIRPORT",
+                            from_address=parsed_row["shipper_address"],
+                            to_airport=parsed_row["origin_airport"],
+                            assigned_driver_id=parsed_row["first_mile_driver_id"],
+                            status=ShipmentLegStatus.ASSIGNED if parsed_row["first_mile_driver_id"] else ShipmentLegStatus.PENDING,
                         )
+                        db.session.add(leg1)
+                        legs_by_sequence[1] = leg1
+
+                    if 2 not in legs_by_sequence:
+                        leg2 = ShipmentLeg(
+                            shipment_id=shipment.id,
+                            leg_sequence=2,
+                            leg_type=ShipmentLegType.AIRPORT_TO_AIRPORT,
+                            from_location_type="ORIGIN_AIRPORT",
+                            to_location_type="DESTINATION_AIRPORT",
+                            from_airport=parsed_row["origin_airport"],
+                            to_airport=parsed_row["destination_airport"],
+                            status=ShipmentLegStatus.PENDING,
+                        )
+                        db.session.add(leg2)
+                        legs_by_sequence[2] = leg2
+
+                    if 3 not in legs_by_sequence:
+                        leg3 = ShipmentLeg(
+                            shipment_id=shipment.id,
+                            leg_sequence=3,
+                            leg_type=ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE,
+                            from_location_type="DESTINATION_AIRPORT",
+                            to_location_type="CONSIGNEE",
+                            from_airport=parsed_row["destination_airport"],
+                            to_address=parsed_row["consignee_address"],
+                            assigned_driver_id=parsed_row["last_mile_driver_id"],
+                            status=ShipmentLegStatus.ASSIGNED if parsed_row["last_mile_driver_id"] else ShipmentLegStatus.PENDING,
+                        )
+                        db.session.add(leg3)
+                        legs_by_sequence[3] = leg3
+
+                    leg1 = legs_by_sequence[1]
+                    leg3 = legs_by_sequence[3]
+
+                    if parsed_row["first_mile_driver_id"] and not leg1.assigned_driver_id:
+                        leg1.assigned_driver_id = parsed_row["first_mile_driver_id"]
+                    if parsed_row["last_mile_driver_id"] and not leg3.assigned_driver_id:
+                        leg3.assigned_driver_id = parsed_row["last_mile_driver_id"]
+
+                    for leg, desired_state in (
+                        (leg1, status_reconciliation["leg1_status"]),
+                        (leg3, status_reconciliation["leg3_status"]),
+                    ):
+                        if desired_state == "pending_or_assigned":
+                            leg.status = ShipmentLegStatus.ASSIGNED if leg.assigned_driver_id else ShipmentLegStatus.PENDING
+                            leg.started_at_utc = None
+                            leg.completed_at_utc = None
+                            continue
+
+                        if desired_state == ShipmentLegStatus.IN_PROGRESS and leg.status == ShipmentLegStatus.COMPLETED:
+                            continue
+
+                        leg.status = desired_state
+                        if desired_state == ShipmentLegStatus.IN_PROGRESS:
+                            leg.started_at_utc = leg.started_at_utc or now_utc
+                            leg.completed_at_utc = None
+                        elif desired_state == ShipmentLegStatus.COMPLETED:
+                            leg.started_at_utc = leg.started_at_utc or now_utc
+                            leg.completed_at_utc = leg.completed_at_utc or now_utc
+
+                    # Guardrail: downstream POD workflow transitions validate leg state, not only shipment.overall_status.
+                    # Keep this importer leg-first so repeated CSV upserts remain safe and deterministic.
 
                     if not use_shipments_for_load_board():
                         entry = db.session.get(LoadBoard, parsed_row["hwb_number"])
