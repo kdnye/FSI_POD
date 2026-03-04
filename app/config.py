@@ -87,4 +87,9 @@ def get_runtime_config() -> dict:
         "LOAD_BOARD_USE_SHIPMENTS": _str_to_bool(os.getenv("LOAD_BOARD_USE_SHIPMENTS"), default=False),
         "POSTMARK_SERVER_TOKEN": _get_env("POSTMARK_SERVER_TOKEN", "").strip(),
         "POSTMARK_FROM_EMAIL": _get_env("POSTMARK_FROM_EMAIL", "").strip(),
+        "GCP_PROJECT_ID": _get_env("GCP_PROJECT_ID").strip(),
+        "GCP_REGION": _get_env("GCP_REGION", "us-central1").strip(),
+        "QUEUE_NAME": _get_env("QUEUE_NAME", "email-queue").strip(),
+        "PUBLIC_SERVICE_URL": _get_env("PUBLIC_SERVICE_URL", "", required_in_production=True).strip(),
+        "TASK_SERVICE_ACCOUNT_EMAIL": _get_env("TASK_SERVICE_ACCOUNT_EMAIL", "").strip(),
     }

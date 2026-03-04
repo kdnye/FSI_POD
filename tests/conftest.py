@@ -1,7 +1,13 @@
+import os
+
 import pytest
 
 from app import create_app, db
 from models import Role, User
+
+os.environ.setdefault("GCP_PROJECT_ID", "test-project")
+os.environ.setdefault("PUBLIC_SERVICE_URL", "https://example.run.app")
+os.environ.setdefault("TASK_SERVICE_ACCOUNT_EMAIL", "tasks-invoker@example.iam.gserviceaccount.com")
 
 
 @pytest.fixture()
@@ -12,6 +18,9 @@ def app():
             "SQLALCHEMY_DATABASE_URI": "sqlite://",
             "WTF_CSRF_ENABLED": False,
             "RATELIMIT_ENABLED": False,
+            "GCP_PROJECT_ID": "test-project",
+            "PUBLIC_SERVICE_URL": "https://example.run.app",
+            "TASK_SERVICE_ACCOUNT_EMAIL": "tasks-invoker@example.iam.gserviceaccount.com",
         }
     )
 
