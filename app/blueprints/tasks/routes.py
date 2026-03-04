@@ -192,45 +192,51 @@ def send_email_task() -> tuple[dict[str, str], int]:
 
 # app/blueprints/tasks/routes.py
 
+# app/blueprints/tasks/routes.py
+
 @tasks_bp.get("/test-email-connectivity")
 def test_email_connectivity():
-    from app.services.postmark import send_shipment_alert
-    from models import Shipment, User
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    import requests
+    from flask import current_app
     
-    # Get test data from your DB
-    shipment = Shipment.query.first()
-    driver = User.query.filter_by(is_active=True).first()
+    # Configuration from your environment
+    token = current_app.config.get("POSTMARK_SERVER_TOKEN")
+    # Using the 'From' address from your Java example
+    from_email = "pod@freightservices.net" 
     
-    if not shipment:
-        return "Error: No shipments found in DB to use for test.", 404
-    if not driver:
-        return "Error: No active users found in DB to use as driver.", 404
+    if not token:
+        return "ERROR: POSTMARK_SERVER_TOKEN is missing in config.", 500
 
-    # Mimic the real timestamp logic
-    timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
+    # Payload mimicking your Java snippet
+    payload = {
+        "From": from_email,
+        "To": "test@blackhole.postmarkapp.com",
+        "Cc": "david.alexander@freightservices.net",
+        "Subject": "Connectivity Test: Standard Email",
+        "TextBody": "Hello from the FSI Python App! This is a non-template test.",
+        "MessageStream": "pod"
+    }
 
     try:
-        # Correctly passing individual parameters to match postmark.py signature
-        success, reason = send_shipment_alert(
-            action_type="SHIPPER_PICKUP",
-            hwb_number=shipment.hwb_number,
-            location_name="Test Connectivity Location",
-            driver_email=driver.email,
-            driver_name=driver.name or "Test Driver",
-            photo_url="https://placehold.co/600x400?text=Test+Photo",
-            signature_url="https://placehold.co/600x400?text=Test+Signature",
-            shipper_email="test@blackhole.postmarkapp.com",
-            consignee_email="test@blackhole.postmarkapp.com",
-            timestamp=timestamp
+        response = requests.post(
+            "https://api.postmarkapp.com/email",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-Postmark-Server-Token": token,
+            },
+            json=payload,
+            timeout=10,
         )
         
-        if success:
-            return f"SUCCESS: Test email accepted by Postmark. (Reason: {reason})", 200
+        if response.status_code == 200:
+            return "SUCCESS: Standard email sent. API Token and Stream are valid.", 200
         else:
-            return f"FAILURE: Postmark function rejected the request. Reason: {reason}", 500
+            # This will capture the exact error message from Postmark (e.g., 'Invalid Message Stream')
+            return f"FAILURE: Postmark rejected the request. Status: {response.status_code} | Body: {response.text}", 500
             
+    except Exception as e:
+        return f"CRITICAL ERROR: {str(e)}", 500
     except Exception as e:
         import traceback
         return f"CRITICAL ERROR: {str(e)}\n\n{traceback.format_exc()}", 500
