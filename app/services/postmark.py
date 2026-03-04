@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
 from email.utils import parseaddr
+from zoneinfo import ZoneInfo
 
 import requests
 from flask import current_app
 
 from models import NotificationSettings
 
-POSTMARK_EMAIL_ENDPOINT = "https://api.postmarkapp.com/email"
+POSTMARK_EMAIL_ENDPOINT = "https://api.postmarkapp.com/email/withTemplate"
 _ACTION_TO_SETTING = {
     "SHIPPER_PICKUP": "notify_shipper_pickup",
     "ORIGIN_AIRPORT_DROP": "notify_origin_drop",
@@ -44,6 +46,11 @@ def send_shipment_alert(
     driver_user,
     shipper_email=None,
     consignee_email=None,
+    hwb_number=None,
+    location_name=None,
+    driver_name=None,
+    photo_url=None,
+    signature_url=None,
 ):
     action = str(action_type or "").strip().upper()
     setting_name = _ACTION_TO_SETTING.get(action)
@@ -84,13 +91,17 @@ def send_shipment_alert(
 
     payload = {
         "From": from_email,
-        "To": unique_recipients[0],
-        "Cc": ",".join(unique_recipients[1:]) if len(unique_recipients) > 1 else "",
-        "Subject": f"Shipment {shipment_id} update: {action.replace('_', ' ').title()}",
-        "TextBody": (
-            f"Shipment {shipment_id} recorded event: {action.replace('_', ' ').title()}.\n"
-            "This notification was generated automatically by FSI POD workflow."
-        ),
+        "To": ",".join(unique_recipients),
+        "TemplateAlias": "pod-event-notification",
+        "TemplateModel": {
+            "action_name": action,
+            "hwb_number": hwb_number or str(shipment_id),
+            "timestamp": datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST"),
+            "location_name": location_name or "",
+            "driver_name": driver_name or getattr(driver_user, "name", None) or "",
+            "photo_url": photo_url or "",
+            "signature_url": signature_url or "",
+        },
     }
 
     try:

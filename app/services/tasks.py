@@ -4,6 +4,8 @@ import json
 
 from flask import current_app
 
+from app.services.gcs import generate_signed_url
+
 
 def _get_tasks_v2_module():
     try:
@@ -19,6 +21,11 @@ def enqueue_email_task(
     actor_user_id: int,
     shipper_email: str | None,
     consignee_email: str | None,
+    hwb_number: str | None = None,
+    location_name: str | None = None,
+    driver_name: str | None = None,
+    photo_blob_name: str | None = None,
+    signature_blob_name: str | None = None,
 ) -> None:
     project_id = current_app.config.get("GCP_PROJECT_ID", "").strip()
     public_service_url = current_app.config.get("PUBLIC_SERVICE_URL", "").strip()
@@ -39,12 +46,22 @@ def enqueue_email_task(
         current_app.config.get("QUEUE_NAME", "email-queue").strip(),
     )
 
+    photo_url = generate_signed_url(photo_blob_name) if photo_blob_name else None
+    signature_url = generate_signed_url(signature_blob_name) if signature_blob_name else None
+
     payload = {
         "shipment_id": shipment_id,
         "action_type": action_type,
         "actor_user_id": actor_user_id,
         "shipper_email": shipper_email,
         "consignee_email": consignee_email,
+        "hwb_number": hwb_number,
+        "location_name": location_name,
+        "driver_name": driver_name,
+        "photo_blob_name": photo_blob_name,
+        "signature_blob_name": signature_blob_name,
+        "photo_url": photo_url,
+        "signature_url": signature_url,
     }
 
     task = {
