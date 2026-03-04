@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
 from email.utils import parseaddr
-from zoneinfo import ZoneInfo
 
 import requests
 from flask import current_app
@@ -32,55 +30,50 @@ def _parse_custom_cc_emails(raw_emails: str | None) -> list[str]:
     if not raw_emails:
         return []
 
-    emails: list[str] = []
-    for part in raw_emails.split(","):
-        email = part.strip()
-        if _is_valid_email(email):
-            emails.append(email)
-    return emails
+    valid: list[str] = []
+    for entry in raw_emails.split(","):
+        candidate = entry.strip()
+        if _is_valid_email(candidate):
+            valid.append(candidate)
+    return valid
 
 
 def send_shipment_alert(
-    shipment_id,
     action_type,
-    driver_user,
-    shipper_email=None,
-    consignee_email=None,
-    hwb_number=None,
-    location_name=None,
-    driver_name=None,
-    photo_url=None,
-    signature_url=None,
+    hwb_number,
+    location_name,
+    driver_email,
+    driver_name,
+    photo_url,
+    signature_url,
+    shipper_email,
+    consignee_email,
+    timestamp,
 ):
     action = str(action_type or "").strip().upper()
     setting_name = _ACTION_TO_SETTING.get(action)
     if not setting_name:
         return False
 
-    settings = NotificationSettings.query.order_by(NotificationSettings.id.asc()).first()
+    settings = NotificationSettings.query.first()
     if settings is None or not getattr(settings, setting_name, False):
         return False
 
     recipients: list[str] = []
-    if _is_valid_email(getattr(driver_user, "email", None)):
-        recipients.append(driver_user.email.strip())
-    if _is_valid_email(shipper_email):
-        recipients.append(shipper_email.strip())
-    if _is_valid_email(consignee_email):
-        recipients.append(consignee_email.strip())
+    for email in [driver_email, shipper_email, consignee_email, *_parse_custom_cc_emails(settings.custom_cc_emails)]:
+        if _is_valid_email(email):
+            recipients.append(email.strip())
 
-    recipients.extend(_parse_custom_cc_emails(settings.custom_cc_emails))
-
-    unique_recipients: list[str] = []
+    deduped: list[str] = []
     seen: set[str] = set()
-    for recipient in recipients:
-        normalized = recipient.lower()
-        if normalized in seen:
+    for email in recipients:
+        key = email.lower()
+        if key in seen:
             continue
-        seen.add(normalized)
-        unique_recipients.append(recipient)
+        seen.add(key)
+        deduped.append(email)
 
-    if not unique_recipients:
+    if not deduped:
         return False
 
     postmark_token = current_app.config.get("POSTMARK_SERVER_TOKEN", "").strip()
@@ -91,14 +84,14 @@ def send_shipment_alert(
 
     payload = {
         "From": from_email,
-        "To": ",".join(unique_recipients),
+        "To": ",".join(deduped),
         "TemplateAlias": "pod-event-notification",
         "TemplateModel": {
             "action_name": action,
-            "hwb_number": hwb_number or str(shipment_id),
-            "timestamp": datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST"),
+            "hwb_number": hwb_number or "",
+            "timestamp": timestamp,
             "location_name": location_name or "",
-            "driver_name": driver_name or getattr(driver_user, "name", None) or "",
+            "driver_name": driver_name or "",
             "photo_url": photo_url or "",
             "signature_url": signature_url or "",
         },
@@ -117,7 +110,7 @@ def send_shipment_alert(
         )
         response.raise_for_status()
     except requests.RequestException as exc:
-        current_app.logger.exception("Failed to send Postmark shipment alert for shipment %s: %s", shipment_id, exc)
+        current_app.logger.exception("Failed to send Postmark shipment alert for %s: %s", hwb_number, exc)
         return False
 
     return True
