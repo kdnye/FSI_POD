@@ -65,6 +65,13 @@
   width: min(100%, 34rem);
 }
 
+.fsi-container--load-board {
+  max-width: min(100%, 1680px);
+  padding-inline: clamp(0.75rem, 1.5vw, 1.5rem);
+}
+
+.fsi-card--load-board {
+  width: 100%;
 .fsi-card--load-board {
   width: min(100%, 100vw - 2rem, 120rem);
 }
@@ -193,6 +200,8 @@
 }
 
 .fsi-load-board-wrap {
+  width: 100%;
+  max-width: 100%;
   max-height: min(68vh, 820px);
   overflow-y: auto;
   overflow-x: auto;
@@ -273,6 +282,11 @@
 }
 
 @media (max-width: 768px) {
+  .fsi-container--load-board {
+    max-width: 100%;
+    padding-inline: 1rem;
+  }
+
   .fsi-navbar .fsi-container {
     flex-wrap: wrap;
     align-items: flex-start;

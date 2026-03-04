@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ "Active Load Board" if full_board_access else "My Active Loads" }} | FSI{% endblock %}
 
+{% block main_container_class %}fsi-container--load-board{% endblock %}
+
 {% block content %}
 <section class="fsi-card fsi-card--load-board">
     <h1 class="fsi-display">{{ "Active Load Board" if full_board_access else "My Active Loads" }}</h1>

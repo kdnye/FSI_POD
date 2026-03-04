@@ -68,7 +68,7 @@
     </div>
   </nav>
 
-  <main class="fsi-container">
+  <main class="fsi-container {% block main_container_class %}{% endblock %}">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <ul class="fsi-flashes">
