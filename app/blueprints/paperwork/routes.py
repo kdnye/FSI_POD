@@ -903,8 +903,8 @@ def upload_load_board_csv():
         elif hwb_number:
             seen_hwb_numbers.add(hwb_number)
 
-        first_mile_driver = resolve_driver_id(row.get("P/U Driver Name"))
-        last_mile_driver = resolve_driver_id(row.get("Del Driver Name"))
+        first_mile_driver = resolve_driver_id(row.get("P/U Agent Name"))
+        last_mile_driver = resolve_driver_id(row.get("Del agent Name"))
 
         if row_issue_list:
             row_errors.append(f"Row {index}: {'; '.join(row_issue_list)}")
