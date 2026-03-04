@@ -19,11 +19,9 @@
       <div class="fsi-nav-actions">
         <a href="{{ url_for('paperwork.log_pod_event') }}" class="fsi-primary-btn" style="text-decoration: none;">New POD</a>
         <a
-          href="https://support.freightservicesinc.com/help"
+          href="{{ url_for('paperwork.help_page') }}"
           aria-label="Help"
           class="fsi-help"
-          target="_blank"
-          rel="noopener noreferrer"
         >?</a>
 
         <div class="fsi-account-menu" data-account-menu>

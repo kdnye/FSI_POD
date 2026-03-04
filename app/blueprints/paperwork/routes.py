@@ -527,6 +527,18 @@ def scan_hwb():
     ), 200
 
 
+@paperwork_bp.get("/help")
+@require_employee_approval()
+def help_page():
+    return render_template(
+        "paperwork/help.html",
+        title="Help & Documentation",
+        is_admin=is_admin_user(),
+        is_ops=is_ops_or_admin_user(),
+        role=current_user_role(),
+    )
+
+
 @paperwork_bp.get("/load-board")
 @require_employee_approval()
 def active_load_board():
