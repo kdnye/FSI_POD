@@ -186,3 +186,39 @@ def send_email_task() -> tuple[dict[str, str], int]:
         )
 
     return jsonify({"status": "ok"}), 200
+
+# app/blueprints/tasks/routes.py
+
+@tasks_bp.get("/test-email-connectivity")
+def test_email_connectivity():
+    from app.services.postmark import send_shipment_alert
+    from models import Shipment
+    
+    # Try to find any existing shipment to use as a data source
+    shipment = Shipment.query.first()
+    
+    if not shipment:
+        return "Error: No shipments found in DB to use for test template.", 404
+
+    # metadata mimics what is sent during a real POD event
+    metadata = {
+        "recipient_name": "Connectivity Test",
+        "photo_url": "https://placehold.co/600x400?text=Test+Photo",
+        "signature_url": "https://placehold.co/600x400?text=Test+Signature"
+    }
+
+    try:
+        # This calls your Postmark logic directly
+        success = send_shipment_alert(
+            shipment=shipment,
+            action_type="SHIPPER_PICKUP",
+            metadata=metadata
+        )
+        
+        if success:
+            return "SUCCESS: Test email accepted by Postmark. Check your inbox (and spam).", 200
+        else:
+            return "FAILURE: send_shipment_alert returned False. Check Logs/Settings.", 500
+            
+    except Exception as e:
+        return f"CRITICAL ERROR: {str(e)}", 500
