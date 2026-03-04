@@ -204,13 +204,31 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
 
 
 def get_load_entry(hwb_number: str) -> LegacyLoadView | LoadBoard | None:
-    if not use_shipments_for_load_board():
-        return db.session.get(LoadBoard, hwb_number)
+    entries = get_load_entries_by_identifier(hwb_number)
+    return entries[0] if entries else None
 
-    shipment = Shipment.query.filter_by(hwb_number=hwb_number).first()
-    if not shipment:
-        return None
-    return load_view_from_shipment(shipment)
+
+def get_load_entries_by_identifier(identifier: str) -> list[LegacyLoadView | LoadBoard]:
+    normalized = (identifier or "").strip()
+    if not normalized:
+        return []
+
+    if not use_shipments_for_load_board():
+        entry = db.session.get(LoadBoard, normalized)
+        return [entry] if entry else []
+
+    shipment = Shipment.query.filter_by(hwb_number=normalized).first()
+    if shipment:
+        return [load_view_from_shipment(shipment)]
+
+    shipment_group = ShipmentGroup.query.filter_by(mawb_number=normalized).first()
+    if not shipment_group:
+        return []
+
+    return [
+        load_view_from_shipment(shipment)
+        for shipment in sorted(shipment_group.shipments, key=lambda item: item.hwb_number or "")
+    ]
 
 
 def set_load_status(load_entry: LegacyLoadView | LoadBoard, action_type: str, latitude: str | None = None, longitude: str | None = None) -> None:
@@ -292,7 +310,7 @@ def submit_pod(
     phone: str | None,
     off_sheet_confirmed: bool,
     reassignment_note: str | None,
-) -> None:
+) -> int:
     """Persist POD data in hybrid mode and keep legacy POD event logging."""
     canonical_action = normalize_pod_action(action_type)
     action_folder = canonical_action.lower()
@@ -301,10 +319,14 @@ def submit_pod(
     if not signature_file:
         raise ValueError("Signature image is required.")
 
-    load_board_entry = get_load_entry(hwb_number)
+    target_load_entries = get_load_entries_by_identifier(hwb_number)
     user_has_full_board_rights = is_ops_or_admin_user()
-    is_assigned_to_current_user = bool(load_board_entry and load_board_entry.assigned_driver == g.current_user.id)
-    is_off_sheet = bool(load_board_entry and not user_has_full_board_rights and not is_assigned_to_current_user)
+    off_sheet_entries = [
+        entry
+        for entry in target_load_entries
+        if not user_has_full_board_rights and entry.assigned_driver != g.current_user.id
+    ]
+    is_off_sheet = bool(off_sheet_entries)
 
     if is_off_sheet and not off_sheet_confirmed:
         raise ValueError("Off-sheet completion requires confirmation.")
@@ -315,72 +337,88 @@ def submit_pod(
         raise ValueError("Failed to upload POD assets.")
 
     persisted_reassignment_note = None
-    if is_off_sheet and off_sheet_confirmed:
+    if is_off_sheet and off_sheet_confirmed and off_sheet_entries:
+        from_driver_ids = sorted(
+            {
+                entry.assigned_driver if entry.assigned_driver is not None else "unassigned"
+                for entry in off_sheet_entries
+            },
+            key=str,
+        )
         note_suffix = f" Note: {reassignment_note.strip()}" if reassignment_note and reassignment_note.strip() else ""
         persisted_reassignment_note = (
-            f"Off-sheet confirmation accepted. Load reassigned from "
-            f"{load_board_entry.assigned_driver if load_board_entry.assigned_driver is not None else 'unassigned'} "
-            f"to {g.current_user.id}.{note_suffix}"
+            "Off-sheet confirmation accepted. Loads reassigned from "
+            f"{', '.join(str(driver_id) for driver_id in from_driver_ids)} to {g.current_user.id}.{note_suffix}"
         )
-        assign_load_to_current_driver(load_board_entry)
 
-    shipment_id = None
-    leg_id = None
-    leg_sequence = None
-    leg_type = None
-    if load_board_entry and isinstance(load_board_entry, LegacyLoadView) and load_board_entry.shipment:
-        active_leg = _shipment_current_leg(load_board_entry.shipment)
-        shipment_id = load_board_entry.shipment.id
-        if active_leg:
-            leg_id = active_leg.id
-            leg_sequence = active_leg.leg_sequence
-            leg_type = active_leg.leg_type.value if hasattr(active_leg.leg_type, "value") else str(active_leg.leg_type)
+    for entry in off_sheet_entries:
+        assign_load_to_current_driver(entry)
 
-    pod_record = PODRecord(
-        hwb_number=hwb_number,
-        delivery_photo=photo_uri,
-        signature_image=sig_uri,
-        recipient_name=recipient_name,
-        driver_id=g.current_user.id,
-        action_type=canonical_action,
-        off_sheet_confirmed=off_sheet_confirmed,
-        reassignment_note=persisted_reassignment_note,
-        latitude=latitude if latitude else None,
-        longitude=longitude if longitude else None,
-        shipment_id=shipment_id,
-        leg_id=leg_id,
-        leg_sequence=leg_sequence,
-        leg_type=leg_type,
-    )
+    entries_to_process = target_load_entries or [None]
+    for load_board_entry in entries_to_process:
+        shipment_id = None
+        leg_id = None
+        leg_sequence = None
+        leg_type = None
+        target_hwb_number = hwb_number
+        if load_board_entry and isinstance(load_board_entry, LegacyLoadView) and load_board_entry.shipment:
+            active_leg = _shipment_current_leg(load_board_entry.shipment)
+            shipment_id = load_board_entry.shipment.id
+            target_hwb_number = load_board_entry.shipment.hwb_number
+            if active_leg:
+                leg_id = active_leg.id
+                leg_sequence = active_leg.leg_sequence
+                leg_type = active_leg.leg_type.value if hasattr(active_leg.leg_type, "value") else str(active_leg.leg_type)
+        elif load_board_entry:
+            target_hwb_number = load_board_entry.hwb_number
 
-    if load_board_entry:
-        # Path A: system match
-        pod_record.shipper = load_board_entry.shipper
-        pod_record.consignee = load_board_entry.consignee
-        pod_record.contact_name = load_board_entry.contact_name
-        pod_record.phone = load_board_entry.phone
-        set_load_status(load_board_entry, canonical_action, latitude=latitude, longitude=longitude)
-    else:
-        # Path B: manual POD
-        pod_record.shipper = shipper
-        pod_record.consignee = consignee
-        pod_record.contact_name = contact_name
-        pod_record.phone = phone
+        pod_record = PODRecord(
+            hwb_number=target_hwb_number,
+            delivery_photo=photo_uri,
+            signature_image=sig_uri,
+            recipient_name=recipient_name,
+            driver_id=g.current_user.id,
+            action_type=canonical_action,
+            off_sheet_confirmed=off_sheet_confirmed,
+            reassignment_note=persisted_reassignment_note,
+            latitude=latitude if latitude else None,
+            longitude=longitude if longitude else None,
+            shipment_id=shipment_id,
+            leg_id=leg_id,
+            leg_sequence=leg_sequence,
+            leg_type=leg_type,
+        )
 
-    db.session.add(pod_record)
+        if load_board_entry:
+            # Path A: system match
+            pod_record.shipper = load_board_entry.shipper
+            pod_record.consignee = load_board_entry.consignee
+            pod_record.contact_name = load_board_entry.contact_name
+            pod_record.phone = load_board_entry.phone
+            set_load_status(load_board_entry, canonical_action, latitude=latitude, longitude=longitude)
+        else:
+            # Path B: manual POD
+            pod_record.shipper = shipper
+            pod_record.consignee = consignee
+            pod_record.contact_name = contact_name
+            pod_record.phone = phone
 
-    # Keep existing dashboard status feed functioning.
-    legacy_event = PODEvent(
-        user_id=g.current_user.id,
-        reference_id=hwb_number,
-        event_type=canonical_action,
-        latitude=latitude if latitude else None,
-        longitude=longitude if longitude else None,
-        signature_url=sig_uri,
-        photo_url=photo_uri,
-    )
-    legacy_event.set_az_timestamp()
-    db.session.add(legacy_event)
+        db.session.add(pod_record)
+
+        # Keep existing dashboard status feed functioning.
+        legacy_event = PODEvent(
+            user_id=g.current_user.id,
+            reference_id=target_hwb_number,
+            event_type=canonical_action,
+            latitude=latitude if latitude else None,
+            longitude=longitude if longitude else None,
+            signature_url=sig_uri,
+            photo_url=photo_uri,
+        )
+        legacy_event.set_az_timestamp()
+        db.session.add(legacy_event)
+
+    return len(entries_to_process)
 
 @paperwork_bp.route("/pod/event", methods=["GET", "POST"])
 @require_employee_approval()
@@ -442,7 +480,7 @@ def log_pod_event():
 
     # 3. Database Insertion & Storage Logic Execution
     try:
-        submit_pod(
+        processed_count = submit_pod(
             hwb_number=hwb_number,
             action_type=action_type,
             recipient_name=recipient_name,
@@ -477,9 +515,9 @@ def log_pod_event():
         return redirect(url_for("paperwork.log_pod_event"))
 
     if is_ajax:
-        return jsonify({"success": True, "message": "Event logged successfully."}), 200
+        return jsonify({"success": True, "message": f"Event logged successfully for {processed_count} shipment(s)."}), 200
     
-    flash("POD Event logged.")
+    flash(f"POD Event logged for {processed_count} shipment(s).")
     return redirect(url_for("paperwork.log_pod_event"))
 
 
@@ -491,8 +529,8 @@ def scan_hwb():
     if not hwb_number:
         return jsonify({"error": "HWB number is required."}), 400
 
-    load_board_entry = get_load_entry(hwb_number)
-    if not load_board_entry:
+    target_load_entries = get_load_entries_by_identifier(hwb_number)
+    if not target_load_entries:
         return jsonify(
             {
                 "mode": "base",
@@ -504,12 +542,14 @@ def scan_hwb():
             }
         ), 200
 
+    summary_entry = target_load_entries[0]
     user_has_full_board_rights = is_ops_or_admin_user()
-    is_assigned_to_current_user = load_board_entry.assigned_driver == g.current_user.id
+    is_assigned_to_current_user = all(entry.assigned_driver == g.current_user.id for entry in target_load_entries)
     warning_required = not user_has_full_board_rights and not is_assigned_to_current_user
+    shipment_count = len(target_load_entries)
     warning_message = (
-        "This load is currently off-sheet for your driver assignment. "
-        "Confirm to continue and reassign this load to yourself."
+        f"{shipment_count} load(s) are currently off-sheet for your driver assignment. "
+        "Confirm to continue and reassign all matched loads to yourself."
         if warning_required
         else ""
     )
@@ -518,15 +558,17 @@ def scan_hwb():
         {
             "mode": "enhanced",
             "hwb_number": hwb_number,
-            "shipper": load_board_entry.shipper,
-            "consignee": load_board_entry.consignee,
-            "contact_name": load_board_entry.contact_name,
-            "phone": load_board_entry.phone,
-            "status": load_board_entry.status,
+            "shipper": summary_entry.shipper,
+            "consignee": summary_entry.consignee,
+            "contact_name": summary_entry.contact_name,
+            "phone": summary_entry.phone,
+            "status": summary_entry.status,
             "user_has_full_board_rights": user_has_full_board_rights,
             "is_assigned_to_current_user": is_assigned_to_current_user,
             "warning_required": warning_required,
             "warning_message": warning_message,
+            "shipment_count": shipment_count,
+            "matched_by": "hwb" if shipment_count == 1 and summary_entry.hwb_number == hwb_number else "mawb",
         }
     ), 200
 
