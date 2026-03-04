@@ -79,7 +79,25 @@ def pod_history_csv_response(records, filename: str) -> Response:
     csv_buffer = StringIO()
     writer = csv.writer(csv_buffer)
 
-    writer.writerow(["id", "hwb_number", "action_type", "recipient_name", "shipper", "consignee", "contact_name", "phone", "driver_id", "timestamp_utc", "timestamp_az"])
+    writer.writerow([
+        "id",
+        "hwb_number",
+        "action_type",
+        "recipient_name",
+        "shipper",
+        "consignee",
+        "contact_name",
+        "phone",
+        "driver_id",
+        "latitude",
+        "longitude",
+        "shipment_id",
+        "leg_id",
+        "leg_sequence",
+        "leg_type",
+        "timestamp_utc",
+        "timestamp_az",
+    ])
     for record in records:
         timestamp_utc = record.timestamp.astimezone(timezone.utc) if record.timestamp else None
         timestamp_az = record.timestamp.astimezone(ARIZONA_TZ) if record.timestamp else None
@@ -93,6 +111,12 @@ def pod_history_csv_response(records, filename: str) -> Response:
             record.contact_name or "",
             record.phone or "",
             record.driver_id,
+            record.latitude or "",
+            record.longitude or "",
+            record.shipment_id or "",
+            record.leg_id or "",
+            record.leg_sequence or "",
+            record.leg_type or "",
             timestamp_utc.isoformat() if timestamp_utc else "",
             timestamp_az.isoformat() if timestamp_az else "",
         ])
@@ -121,6 +145,18 @@ def ensure_hybrid_pod_tables() -> None:
             db.session.execute(text("ALTER TABLE pod_records ADD COLUMN off_sheet_confirmed BOOLEAN NOT NULL DEFAULT FALSE"))
         if "reassignment_note" not in pod_record_columns:
             db.session.execute(text("ALTER TABLE pod_records ADD COLUMN reassignment_note TEXT"))
+        if "latitude" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN latitude VARCHAR(32)"))
+        if "longitude" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN longitude VARCHAR(32)"))
+        if "shipment_id" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN shipment_id BIGINT REFERENCES shipments(id) ON DELETE SET NULL"))
+        if "leg_id" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN leg_id BIGINT REFERENCES shipment_legs(id) ON DELETE SET NULL"))
+        if "leg_sequence" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN leg_sequence INTEGER"))
+        if "leg_type" not in pod_record_columns:
+            db.session.execute(text("ALTER TABLE pod_records ADD COLUMN leg_type VARCHAR(64)"))
         db.session.commit()
     if ShipmentLegTransition.__tablename__ not in table_names:
         ShipmentLegTransition.__table__.create(db.engine)
@@ -290,6 +326,18 @@ def submit_pod(
         )
         assign_load_to_current_driver(load_board_entry)
 
+    shipment_id = None
+    leg_id = None
+    leg_sequence = None
+    leg_type = None
+    if load_board_entry and isinstance(load_board_entry, LegacyLoadView) and load_board_entry.shipment:
+        active_leg = _shipment_current_leg(load_board_entry.shipment)
+        shipment_id = load_board_entry.shipment.id
+        if active_leg:
+            leg_id = active_leg.id
+            leg_sequence = active_leg.leg_sequence
+            leg_type = active_leg.leg_type.value if hasattr(active_leg.leg_type, "value") else str(active_leg.leg_type)
+
     pod_record = PODRecord(
         hwb_number=hwb_number,
         delivery_photo=photo_uri,
@@ -299,6 +347,12 @@ def submit_pod(
         action_type=canonical_action,
         off_sheet_confirmed=off_sheet_confirmed,
         reassignment_note=persisted_reassignment_note,
+        latitude=latitude if latitude else None,
+        longitude=longitude if longitude else None,
+        shipment_id=shipment_id,
+        leg_id=leg_id,
+        leg_sequence=leg_sequence,
+        leg_type=leg_type,
     )
 
     if load_board_entry:
