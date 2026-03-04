@@ -12,9 +12,33 @@ from models import User
 tasks_bp = Blueprint("tasks", __name__)
 
 
+def _validate_task_request() -> tuple[dict[str, str], int] | None:
+    task_name = request.headers.get("X-CloudTasks-TaskName")
+    if not task_name:
+        return jsonify({"error": "Missing required Cloud Tasks metadata."}), 403
+
+    expected_secret = (current_app.config.get("TASKS_SHARED_SECRET") or "").strip()
+    if not expected_secret:
+        current_app.logger.error("TASKS_SHARED_SECRET is not configured for send-email task endpoint.")
+        return jsonify({"error": "Task endpoint is not configured."}), 403
+
+    provided_secret = request.headers.get("X-Tasks-Auth")
+    if not provided_secret:
+        return jsonify({"error": "Missing task authentication header."}), 401
+
+    if provided_secret != expected_secret:
+        return jsonify({"error": "Invalid task authentication credentials."}), 403
+
+    return None
+
+
 @tasks_bp.post("/api/tasks/send-email")
 @csrf.exempt
 def send_email_task() -> tuple[dict[str, str], int]:
+    auth_error = _validate_task_request()
+    if auth_error is not None:
+        return auth_error
+
     payload = request.get_json(silent=True) or {}
     task_name = request.headers.get("X-CloudTasks-TaskName")
     request_id = request.headers.get("X-Request-Id")

@@ -113,6 +113,7 @@ def get_runtime_config() -> dict:
         "QUEUE_NAME": os.getenv("EMAIL_QUEUE_NAME", "email-queue").strip(),
         "PUBLIC_SERVICE_URL": _get_env("PUBLIC_SERVICE_URL", "", required_in_production=True).strip(),
         "TASK_SERVICE_ACCOUNT_EMAIL": _get_env("TASK_SERVICE_ACCOUNT_EMAIL", required_in_production=True).strip(),
+        "TASKS_SHARED_SECRET": _get_env("TASKS_SHARED_SECRET", "", required_in_production=True).strip(),
         "SCHEMA_FAIL_FAST_ON_STARTUP": _str_to_bool(
             os.getenv("SCHEMA_FAIL_FAST_ON_STARTUP"),
             default=_is_production(),
