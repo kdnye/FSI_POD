@@ -71,8 +71,6 @@
 }
 
 .fsi-card--load-board {
-  width: 100%;
-.fsi-card--load-board {
   width: min(100%, 100vw - 2rem, 120rem);
 }
 
@@ -237,6 +235,32 @@
   margin-bottom: 1.5rem;
 }
 
+
+.pod-event-card {
+  width: min(100%, calc(100vw - 20px), 46rem);
+}
+
+.pod-event-form {
+  display: grid;
+  justify-items: center;
+}
+
+.pod-event-form .pod-event-fieldset,
+.pod-event-form .fsi-form-actions,
+.pod-event-form .pod-status-message {
+  width: min(100%, calc(100vw - 40px), 36rem);
+  margin-inline: auto;
+}
+
+.pod-event-form .pod-event-fieldset > * {
+  width: 100%;
+}
+
+.pod-event-form .pod-signature-shell,
+.pod-event-form .pod-qr-reader {
+  margin-inline: auto;
+}
+
 .pod-qr-reader {
   width: 100%;
   max-width: 360px;
@@ -244,6 +268,25 @@
   border: 1px solid var(--color-border);
   border-radius: 0.55rem;
   overflow: hidden;
+}
+
+.pod-qr-reader video {
+  width: 100% !important;
+  max-height: clamp(220px, 46vh, 340px);
+  object-fit: cover;
+}
+
+.pod-qr-reader #qr-reader__scan_region {
+  min-height: 0 !important;
+}
+
+.pod-qr-reader #qr-reader__dashboard_section {
+  padding: 0.7rem;
+}
+
+.pod-qr-reader select,
+.pod-qr-reader button {
+  max-width: 100%;
 }
 
 .pod-signature-shell {
@@ -343,7 +386,21 @@
   }
 
   .pod-qr-reader {
-    max-width: min(100%, 260px);
+    max-width: min(100%, 250px);
+  }
+
+  .pod-qr-reader video {
+    max-height: clamp(180px, 38vh, 260px);
+  }
+
+  .pod-qr-reader #qr-reader__dashboard_section_csr {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .pod-qr-reader #qr-reader__dashboard_section_csr > * {
+    width: 100%;
   }
 
   .pod-signature-shell {
@@ -365,7 +422,11 @@
   }
 
   .pod-qr-reader {
-    max-width: min(100%, 220px);
+    max-width: min(100%, 210px);
+  }
+
+  .pod-qr-reader video {
+    max-height: clamp(160px, 32vh, 220px);
   }
 
   .pod-signature-canvas {

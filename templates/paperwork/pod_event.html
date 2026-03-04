@@ -2,10 +2,10 @@
 {% block title %}Capture POD Event | FSI{% endblock %}
 
 {% block content %}
-<section class="fsi-card">
+<section class="fsi-card pod-event-card">
     <h1 class="fsi-display">Record POD Event</h1>
 
-    <form id="podEventForm" enctype="multipart/form-data">
+    <form id="podEventForm" class="pod-event-form" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" id="latitude" name="latitude">
         <input type="hidden" id="longitude" name="longitude">
