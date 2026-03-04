@@ -122,9 +122,26 @@ def send_email_task() -> tuple[dict[str, str], int]:
     if driver is None:
         return jsonify({"error": "Driver user not found for email task."}), 404
 
+    def _build_media_url(blob_name: object) -> str | None:
+        if not isinstance(blob_name, str) or not blob_name.strip():
+            return None
+        return generate_signed_url(blob_name)
+
+    timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
+
     try:
-        photo_url = generate_signed_url(photo_blob_name) if photo_blob_name else None
-        signature_url = generate_signed_url(signature_blob_name) if signature_blob_name else None
+        sent, reason = send_shipment_alert(
+            action_type=normalized_action_type,
+            hwb_number=hwb_number,
+            location_name=location_name,
+            driver_email=driver.email,
+            driver_name=driver.name,
+            photo_url=_build_media_url(photo_blob_name),
+            signature_url=_build_media_url(signature_blob_name),
+            shipper_email=shipper_email,
+            consignee_email=consignee_email,
+            timestamp=timestamp,
+        )
     except Exception as exc:
         current_app.logger.exception(
             "Failed to generate signed URLs for shipment alert task shipment_id=%s action_type=%s task_name=%s request_id=%s",
@@ -148,20 +165,6 @@ def send_email_task() -> tuple[dict[str, str], int]:
             500,
         )
 
-    timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
-
-    sent, reason = send_shipment_alert(
-        action_type=normalized_action_type,
-        hwb_number=hwb_number,
-        location_name=location_name,
-        driver_email=driver.email,
-        driver_name=driver.name,
-        photo_url=photo_url,
-        signature_url=signature_url,
-        shipper_email=shipper_email,
-        consignee_email=consignee_email,
-        timestamp=timestamp,
-    )
     if not sent:
         current_app.logger.error(
             "Shipment alert task failed action_type=%s hwb_number=%s reason=%s task_name=%s request_id=%s",
