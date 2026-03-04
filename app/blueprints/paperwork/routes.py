@@ -252,18 +252,22 @@ def assign_load_to_current_driver(load_entry: LegacyLoadView | LoadBoard) -> Non
             active_leg.status = ShipmentLegStatus.ASSIGNED
 
 
-def query_loads(full_board_access: bool, include_delivered: bool = True):
+def query_loads(full_board_access: bool, include_delivered: bool = True, include_cancelled: bool = False):
     if not use_shipments_for_load_board():
         load_query = LoadBoard.query
         if not full_board_access:
             load_query = load_query.filter_by(assigned_driver=g.current_user.id)
         if not include_delivered:
             load_query = load_query.filter(LoadBoard.status != "Delivered")
+        if not include_cancelled:
+            load_query = load_query.filter(LoadBoard.status != "Cancelled")
         return load_query.order_by(LoadBoard.hwb_number.asc()).all()
 
     shipment_query = Shipment.query.order_by(Shipment.hwb_number.asc())
     if not include_delivered:
         shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.DELIVERED)
+    if not include_cancelled:
+        shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.CANCELLED)
     shipments = shipment_query.all()
     views = []
     for shipment in shipments:
@@ -544,7 +548,12 @@ def help_page():
 def active_load_board():
     full_board_access = is_ops_or_admin_user()
     show_delivered = request.args.get("show_delivered", "0") == "1"
-    loads = query_loads(full_board_access, include_delivered=show_delivered)
+    show_cancelled = request.args.get("show_cancelled", "0") == "1"
+    loads = query_loads(
+        full_board_access,
+        include_delivered=show_delivered,
+        include_cancelled=show_cancelled,
+    )
 
     latest_delivery_by_hwb: dict[str, PODRecord] = {}
     load_hwbs = [load.hwb_number for load in loads if load.hwb_number]
@@ -600,6 +609,7 @@ def active_load_board():
         loads=loads,
         full_board_access=full_board_access,
         show_delivered=show_delivered,
+        show_cancelled=show_cancelled,
     )
 
 
