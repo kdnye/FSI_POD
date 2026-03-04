@@ -176,3 +176,117 @@ body {
 .fsi-admin-table select {
   min-width: 10rem;
 }
+
+.fsi-load-board-actions {
+  margin-bottom: 0.75rem;
+}
+
+.fsi-load-status-legend {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.fsi-load-status-legend__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.fsi-load-status-legend__list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+}
+
+.fsi-status-badge {
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.2rem 0.55rem;
+  white-space: nowrap;
+}
+
+.status-awaiting-pickup {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.status-at-origin-airport {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
+}
+
+.status-in-air {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+  color: #5b21b6;
+}
+
+.status-at-destination-airport {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.status-out-for-delivery {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.status-delivered {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+}
+
+[data-theme='dark'] .status-awaiting-pickup,
+[data-bs-theme='dark'] .status-awaiting-pickup {
+  background: #334155;
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+[data-theme='dark'] .status-at-origin-airport,
+[data-bs-theme='dark'] .status-at-origin-airport {
+  background: #082f49;
+  border-color: #0ea5e9;
+  color: #bae6fd;
+}
+
+[data-theme='dark'] .status-in-air,
+[data-bs-theme='dark'] .status-in-air {
+  background: #312e81;
+  border-color: #8b5cf6;
+  color: #ddd6fe;
+}
+
+[data-theme='dark'] .status-at-destination-airport,
+[data-bs-theme='dark'] .status-at-destination-airport {
+  background: #78350f;
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+
+[data-theme='dark'] .status-out-for-delivery,
+[data-bs-theme='dark'] .status-out-for-delivery {
+  background: #14532d;
+  border-color: #22c55e;
+  color: #bbf7d0;
+}
+
+[data-theme='dark'] .status-delivered,
+[data-bs-theme='dark'] .status-delivered {
+  background: #064e3b;
+  border-color: #10b981;
+  color: #a7f3d0;
+}
