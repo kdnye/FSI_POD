@@ -8,6 +8,8 @@ from models import Role, User
 os.environ.setdefault("GCP_PROJECT_ID", "test-project")
 os.environ.setdefault("PUBLIC_SERVICE_URL", "https://example.run.app")
 os.environ.setdefault("TASK_SERVICE_ACCOUNT_EMAIL", "tasks-invoker@example.iam.gserviceaccount.com")
+os.environ.setdefault("POSTMARK_SERVER_TOKEN", "test-postmark-token")
+os.environ.setdefault("POSTMARK_FROM_EMAIL", "notifications@example.com")
 
 
 @pytest.fixture()

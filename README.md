@@ -55,7 +55,17 @@ gcloud builds submit --config cloudbuild.yaml .
 The pipeline:
 1. Builds the container image.
 2. Pushes image to Artifact Registry.
-3. Deploys to Cloud Run with required env + secrets wiring.
+3. Executes the migration job (`flask db upgrade --directory alembic`).
+4. Deploys to Cloud Run with required env + secrets wiring.
+
+### Deployment Runbook Requirement (Load Board MAWB)
+Before serving code that reads `LoadBoard.mawb_number`, run the SQL migration in `migrations/20260304_add_load_board_mawb_number.sql` (or equivalent Alembic revision) against the target database.
+
+Recommended verification step after migration and before cutover:
+```bash
+curl -fsS https://<service-url>/readyz
+```
+If required columns are missing, `/readyz` returns `503` with actionable guidance listing missing schema elements.
 
 ## Required Runtime Environment Variables
 These values are read by `app/config.py`.

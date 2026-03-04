@@ -1,4 +1,4 @@
-from flask import Flask, g, redirect, url_for
+from flask import Flask, g, jsonify, redirect, url_for
 from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_limiter.util import get_remote_address
@@ -36,6 +36,12 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     # Ensure model metadata is registered for Alembic autogenerate.
     import models  # noqa: F401
 
+    from app import schema_checks
+
+    if app.config.get("SCHEMA_FAIL_FAST_ON_STARTUP", False):
+        with app.app_context():
+            schema_checks.assert_required_schema()
+
     # Register blueprints
     from app.blueprints.auth.routes import auth_bp
     from app.blueprints.account.routes import account_bp
@@ -48,6 +54,26 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(tasks_bp)
 
     
+
+    @app.get("/readyz")
+    def readiness_check():
+        with app.app_context():
+            report = schema_checks.get_required_schema_report()
+
+        if report["ok"]:
+            return jsonify({"status": "ok"}), 200
+
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": report["error"],
+                    "missing_columns": report["missing_columns"],
+                }
+            ),
+            503,
+        )
+
     @app.get("/")
     def index():
         if getattr(g, "current_user", None) is None:
