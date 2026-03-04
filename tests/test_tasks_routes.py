@@ -14,7 +14,10 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
             calls.append(kwargs)
             return True, "sent"
 
+        generated_for = []
+
         def _fake_signed_url(blob_name):
+            generated_for.append(blob_name)
             return f"https://signed/{blob_name}"
 
         monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
@@ -55,6 +58,56 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
     assert calls[0]["hwb_number"] == "HWB44"
     assert calls[0]["photo_url"] == "https://signed/pods/photo.jpg"
     assert calls[0]["signature_url"] == "https://signed/pods/signature.jpg"
+    assert generated_for == ["pods/photo.jpg", "pods/signature.jpg"]
+
+
+def test_send_email_task_route_passes_none_urls_when_blob_names_absent(client, app, monkeypatch):
+    with app.app_context():
+        driver = User(email="driver4@example.com", password_hash="hash", employee_approved=True)
+        db.session.add(driver)
+        db.session.commit()
+
+        calls = []
+        generated_for = []
+
+        def _fake_send(**kwargs):
+            calls.append(kwargs)
+            return True, "sent"
+
+        def _fake_signed_url(blob_name):
+            generated_for.append(blob_name)
+            return f"https://signed/{blob_name}"
+
+        monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
+        monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", _fake_signed_url)
+        monkeypatch.setattr(
+            "app.blueprints.tasks.routes._verify_task_oidc_token",
+            lambda token, audience: {
+                "iss": "https://accounts.google.com",
+                "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+                "email_verified": True,
+                "aud": audience,
+            },
+        )
+
+        response = client.post(
+            "/api/tasks/send-email",
+            headers={
+                "X-CloudTasks-TaskName": "task-no-media",
+                "Authorization": "Bearer valid-token",
+            },
+            json={
+                "shipment_id": 45,
+                "action_type": "SHIPPER_PICKUP",
+                "actor_user_id": driver.id,
+                "hwb_number": "HWB45",
+            },
+        )
+
+    assert response.status_code == 200
+    assert calls[0]["photo_url"] is None
+    assert calls[0]["signature_url"] is None
+    assert generated_for == []
 
 
 def test_send_email_task_route_rejects_untrusted_direct_post(client, app):
