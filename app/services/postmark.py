@@ -11,7 +11,7 @@ POSTMARK_EMAIL_ENDPOINT = "https://api.postmarkapp.com/email/withTemplate"
 _ACTION_TO_SETTING = {
     "SHIPPER_PICKUP": "notify_shipper_pickup",
     "ORIGIN_AIRPORT_DROP": "notify_origin_drop",
-    "DESTINATION_AIRPORT_PICKUP": "notify_dest_pickup",
+    "DEST_AIRPORT_PICKUP": "notify_dest_pickup",
     "CONSIGNEE_DROP": "notify_consignee_drop",
 }
 ALLOWED_SHIPMENT_ALERT_ACTIONS = frozenset(_ACTION_TO_SETTING)
@@ -99,12 +99,14 @@ def send_shipment_alert(
         )
         return False, "credential_or_config_issue"
 
+    action_display = action.replace("_", " ").title().replace("Dest", "Destination")
+
     payload = {
         "From": from_email,
         "To": ",".join(deduped),
         "TemplateAlias": "pod-event-notification",
         "TemplateModel": {
-            "action_name": action,
+            "action_name": action_display,
             "hwb_number": hwb_number or "",
             "timestamp": timestamp,
             "location_name": location_name or "",
