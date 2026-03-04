@@ -4,8 +4,6 @@ import json
 
 from flask import current_app
 
-from app.services.gcs import generate_signed_url
-
 
 def _get_tasks_v2_module():
     try:
@@ -39,9 +37,6 @@ def enqueue_email_task(
     if not service_account_email:
         raise RuntimeError("TASK_SERVICE_ACCOUNT_EMAIL is required to enqueue Cloud Tasks email jobs.")
 
-    photo_url = generate_signed_url(photo_blob_name)
-    signature_url = generate_signed_url(signature_blob_name)
-
     payload = {
         "shipment_id": shipment_id,
         "action_type": action_type,
@@ -50,8 +45,6 @@ def enqueue_email_task(
         "location_name": location_name,
         "photo_blob_name": photo_blob_name,
         "signature_blob_name": signature_blob_name,
-        "photo_url": photo_url,
-        "signature_url": signature_url,
         "shipper_email": shipper_email,
         "consignee_email": consignee_email,
     }
