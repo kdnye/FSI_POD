@@ -10,7 +10,8 @@
     {% if full_board_access %}
     <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
         <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
-        <p style="margin-top: 0;">Upload a CSV with headers: <code>hwb_number, shipper, consignee, contact_name, phone, assigned_driver, status</code>.</p>
+        <p style="margin-top: 0;">Upload a CSV with required headers: <code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code>.</p>
+        <p style="margin-top: 0;">Optional headers: <code>first_mile_driver_id, last_mile_driver_id, status</code>. Airport fields must be 3-letter uppercase IATA codes (for example <code>PHX</code>), and return shipments must be uploaded as a separate booking row.</p>
         <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="file" name="load_board_csv" accept=".csv" required>
