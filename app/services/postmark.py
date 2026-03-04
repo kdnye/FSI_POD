@@ -95,6 +95,7 @@ def send_shipment_alert(
             "photo_url": photo_url or "",
             "signature_url": signature_url or "",
         },
+        "MessageStream": "pod",  # Added to route via the dedicated pod stream
     }
 
     try:
