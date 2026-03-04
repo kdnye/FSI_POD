@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 import json
 
 from flask import current_app
@@ -13,17 +14,31 @@ def _get_tasks_v2_module():
     return tasks_v2
 
 
-def enqueue_email_task(
-    shipment_id,
-    action_type,
-    actor_user_id,
-    hwb_number,
-    location_name,
-    photo_blob_name,
-    signature_blob_name,
-    shipper_email,
-    consignee_email,
-):
+@dataclass(slots=True)
+class EmailTaskPayload:
+    shipment_id: int
+    action_type: str
+    actor_user_id: int
+    hwb_number: str | None = None
+    location_name: str | None = None
+    photo_blob_name: str | None = None
+    signature_blob_name: str | None = None
+    shipper_email: str | None = None
+    consignee_email: str | None = None
+
+
+def _validate_required_fields(payload: EmailTaskPayload) -> None:
+    if payload.shipment_id is None:
+        raise ValueError("EmailTaskPayload.shipment_id is required.")
+    if not str(payload.action_type or "").strip():
+        raise ValueError("EmailTaskPayload.action_type is required.")
+    if payload.actor_user_id is None:
+        raise ValueError("EmailTaskPayload.actor_user_id is required.")
+
+
+def enqueue_email_task(payload: EmailTaskPayload) -> None:
+    _validate_required_fields(payload)
+
     project_id = current_app.config.get("GCP_PROJECT_ID", "").strip()
     public_service_url = current_app.config.get("PUBLIC_SERVICE_URL", "").strip()
     service_account_email = current_app.config.get("TASK_SERVICE_ACCOUNT_EMAIL", "").strip()
@@ -37,18 +52,6 @@ def enqueue_email_task(
     if not service_account_email:
         raise RuntimeError("TASK_SERVICE_ACCOUNT_EMAIL is required to enqueue Cloud Tasks email jobs.")
 
-    payload = {
-        "shipment_id": shipment_id,
-        "action_type": action_type,
-        "actor_user_id": actor_user_id,
-        "hwb_number": hwb_number,
-        "location_name": location_name,
-        "photo_blob_name": photo_blob_name,
-        "signature_blob_name": signature_blob_name,
-        "shipper_email": shipper_email,
-        "consignee_email": consignee_email,
-    }
-
     tasks_v2 = _get_tasks_v2_module()
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(project_id, region, queue_name)
@@ -58,7 +61,7 @@ def enqueue_email_task(
             "url": f"{public_service_url.rstrip('/')}/api/tasks/send-email",
             "headers": {"Content-Type": "application/json"},
             "oidc_token": {"service_account_email": service_account_email},
-            "body": json.dumps(payload).encode("utf-8"),
+            "body": json.dumps(asdict(payload)).encode("utf-8"),
         }
     }
     client.create_task(parent=parent, task=task)
