@@ -221,8 +221,8 @@ def test_email_connectivity():
             driver_name=driver.name or "Test Driver",
             photo_url="https://placehold.co/600x400?text=Test+Photo",
             signature_url="https://placehold.co/600x400?text=Test+Signature",
-            shipper_email="shipper-test@freightservicesinc.com",
-            consignee_email="consignee-test@freightservicesinc.com",
+            shipper_email="test@blackhole.postmarkapp.com",
+            consignee_email="test@blackhole.postmarkapp.com",
             timestamp=timestamp
         )
         
