@@ -11,6 +11,9 @@ os.environ.setdefault("TASK_SERVICE_ACCOUNT_EMAIL", "tasks-invoker@example.iam.g
 os.environ.setdefault("POSTMARK_SERVER_TOKEN", "test-postmark-token")
 os.environ.setdefault("POSTMARK_FROM_EMAIL", "notifications@example.com")
 os.environ.setdefault("TASKS_SHARED_SECRET", "test-task-secret")
+os.environ.setdefault("TASKS_EXPECTED_QUEUE_NAME", "email-queue")
+os.environ.setdefault("TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL", "tasks-invoker@example.iam.gserviceaccount.com")
+os.environ.setdefault("TASKS_EXPECTED_AUDIENCE", "https://example.run.app/api/tasks/send-email")
 
 
 @pytest.fixture()
@@ -26,6 +29,9 @@ def app():
             "PUBLIC_SERVICE_URL": "https://example.run.app",
             "TASK_SERVICE_ACCOUNT_EMAIL": "tasks-invoker@example.iam.gserviceaccount.com",
             "TASKS_SHARED_SECRET": "test-task-secret",
+            "TASKS_EXPECTED_QUEUE_NAME": "email-queue",
+            "TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL": "tasks-invoker@example.iam.gserviceaccount.com",
+            "TASKS_EXPECTED_AUDIENCE": "https://example.run.app/api/tasks/send-email",
         }
     )
 
