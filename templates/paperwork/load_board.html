@@ -54,8 +54,12 @@
             <thead>
                 <tr>
                     <th>HWB</th>
-                    <th>Shipper</th>
-                    <th>Consignee</th>
+                    <th class="fsi-column--stacked">
+                        <div class="fsi-header-stack">
+                            <div class="fsi-header-stack__primary">Shipper</div>
+                            <div class="fsi-header-stack__secondary">Consignee</div>
+                        </div>
+                    </th>
                     <th>Contact</th>
                     <th>Assigned Driver (Current Leg)</th>
                     <th>Status</th>
@@ -71,28 +75,33 @@
                 {% for load in loads %}
                 <tr>
                     <td>{{ load.hwb_number }}</td>
-                    {% set shipper_parts = (load.shipper or '').split(', ', 1) %}
-                    {% set shipper_name = shipper_parts[0] if shipper_parts else '—' %}
-                    {% set shipper_address = shipper_parts[1] if shipper_parts|length > 1 else '' %}
-                    <td class="fsi-entity-cell">
-                        <div style="display: flex; align-items: center;">
-                            <span>{{ shipper_name or '—' }}</span>
-                            {% if shipper_address %}
-                            <span title="{{ shipper_parts[0] }}, {{ shipper_address }}" style="cursor: help; color: var(--fsi-teal); font-weight: bold; margin-left: 0.4rem;">ⓘ</span>
-                            {% endif %}
+                    
+                    <td class="fsi-column--stacked">
+                        <div class="fsi-data-stack">
+                            {# Shipper Stack Item #}
+                            {% set shipper_parts = (load.shipper or '').split(', ', 1) %}
+                            {% set shipper_name = shipper_parts[0] if shipper_parts else '—' %}
+                            {% set shipper_address = shipper_parts[1] if shipper_parts|length > 1 else '' %}
+                            <div class="fsi-data-stack__primary" style="display: flex; align-items: center;">
+                                <span>{{ shipper_name or '—' }}</span>
+                                {% if shipper_address %}
+                                <span title="{{ load.shipper }}" style="cursor: help; color: var(--fsi-teal); font-weight: bold; margin-left: 0.4rem;">ⓘ</span>
+                                {% endif %}
+                            </div>
+
+                            {# Consignee Stack Item #}
+                            {% set consignee_parts = (load.consignee or '').split(', ', 1) %}
+                            {% set consignee_name = consignee_parts[0] if consignee_parts else '—' %}
+                            {% set consignee_address = consignee_parts[1] if consignee_parts|length > 1 else '' %}
+                            <div class="fsi-data-stack__secondary" style="display: flex; align-items: center;">
+                                <span>{{ consignee_name or '—' }}</span>
+                                {% if consignee_address %}
+                                <span title="{{ load.consignee }}" style="cursor: help; color: var(--fsi-teal); font-weight: bold; margin-left: 0.4rem; font-size: 0.9em;">ⓘ</span>
+                                {% endif %}
+                            </div>
                         </div>
                     </td>
-                    {% set consignee_parts = (load.consignee or '').split(', ', 1) %}
-                    {% set consignee_name = consignee_parts[0] if consignee_parts else '—' %}
-                    {% set consignee_address = consignee_parts[1] if consignee_parts|length > 1 else '' %}
-                    <td class="fsi-entity-cell">
-                        <div style="display: flex; align-items: center;">
-                            <span>{{ consignee_name or '—' }}</span>
-                            {% if consignee_address %}
-                            <span title="{{ consignee_parts[0] }}, {{ consignee_address }}" style="cursor: help; color: var(--fsi-teal); font-weight: bold; margin-left: 0.4rem;">ⓘ</span>
-                            {% endif %}
-                        </div>
-                    </td>
+
                     <td>{{ load.contact_name }}</td>
                     <td>{{ load.current_leg_driver_name or '—' }}</td>
                     {% set status_class = load.stage_class if load.stage_class is defined and load.stage_class else (
