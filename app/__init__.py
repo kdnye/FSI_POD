@@ -81,3 +81,6 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         return redirect(url_for("paperwork.log_pod_event"))
 
     return app
+# app/__init__.py
+from app.blueprints.tasks.routes import tasks_bp
+app.register_blueprint(tasks_bp, url_prefix="/tasks")
