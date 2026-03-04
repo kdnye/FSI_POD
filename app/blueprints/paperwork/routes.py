@@ -26,6 +26,7 @@ from models import (
     ShipmentLegTransition,
     ShipmentStatus,
     ShipmentLegType,
+    User,
 )
 
 paperwork_bp = Blueprint("paperwork", __name__)
@@ -556,6 +557,30 @@ def active_load_board():
             load.pod_delivery_photo = None
             load.pod_signature_image = None
             load.pod_recipient_name = None
+
+    assigned_driver_ids = {
+        load.assigned_driver
+        for load in loads
+        if getattr(load, "assigned_driver", None) is not None
+    }
+    users_by_id = {
+        user.id: user
+        for user in User.query.filter(User.id.in_(assigned_driver_ids)).all()
+    } if assigned_driver_ids else {}
+
+    for load in loads:
+        assigned_driver_id = getattr(load, "assigned_driver", None)
+        assigned_driver = users_by_id.get(assigned_driver_id)
+        if not assigned_driver:
+            load.current_leg_driver_name = "—"
+            continue
+
+        load.current_leg_driver_name = (
+            getattr(assigned_driver, "full_name", None)
+            or assigned_driver.name
+            or " ".join(part for part in [assigned_driver.first_name, assigned_driver.last_name] if part).strip()
+            or assigned_driver.email
+        )
 
     return render_template(
         "paperwork/load_board.html",

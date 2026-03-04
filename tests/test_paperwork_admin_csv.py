@@ -181,7 +181,7 @@ def test_ops_user_sees_full_active_load_board(client):
                 shipper="Acme",
                 consignee="Receiver One",
                 contact_name="Contact One",
-                phone="555-3000",
+                phone="555-3000-should-not-display",
                 assigned_driver=ops_user.id,
                 status="Pending",
             ),
@@ -206,6 +206,9 @@ def test_ops_user_sees_full_active_load_board(client):
     assert "HWB-OPS-1" in body
     assert "HWB-OPS-2" in body
     assert "Ops/Admin CSV Upload" in body
+    assert "Assigned Driver (Current Leg)" in body
+    assert "ops-board@example.com" in body
+    assert "555-3000-should-not-display" not in body
 
 def test_active_load_board_shows_pod_details_only_for_delivered_loads(client):
     driver_id = _create_user("driver-pod-details@example.com", role=Role.EMPLOYEE)

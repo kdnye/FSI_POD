@@ -46,7 +46,7 @@
                     <th>Shipper</th>
                     <th>Consignee</th>
                     <th>Contact</th>
-                    <th>Phone</th>
+                    <th>Assigned Driver (Current Leg)</th>
                     <th>Status</th>
                     <th>Current Leg</th>
                     <th>Leg Status</th>
@@ -62,7 +62,7 @@
                     <td>{{ load.shipper }}</td>
                     <td>{{ load.consignee }}</td>
                     <td>{{ load.contact_name }}</td>
-                    <td>{{ load.phone }}</td>
+                    <td>{{ load.current_leg_driver_name or '—' }}</td>
                     {% set status_class = load.stage_class if load.stage_class is defined and load.stage_class else (
                         'status-delivered' if load.status == 'Delivered' else
                         'status-in-air' if load.status == 'Picked Up' else
