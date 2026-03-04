@@ -1,5 +1,6 @@
 from flask import Flask, g, redirect, url_for
 from flask_limiter import Limiter
+from flask_migrate import Migrate
 from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
@@ -13,6 +14,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[DEFAULT_DAILY_LIMIT, DEFAULT_HOURLY_LIMIT],
 )
+migrate = Migrate()
 
 def create_app(config_overrides: dict | None = None) -> Flask:
     app = Flask(
@@ -27,8 +29,12 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         app.config.update(config_overrides)
 
     db.init_app(app)
+    migrate.init_app(app, db)
     csrf.init_app(app)
     limiter.init_app(app)
+
+    # Ensure model metadata is registered for Alembic autogenerate.
+    import models  # noqa: F401
 
     # Register blueprints
     from app.blueprints.auth.routes import auth_bp

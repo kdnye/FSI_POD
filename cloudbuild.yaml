@@ -13,6 +13,37 @@ steps:
       - push
       - ${_IMAGE}
 
+  - id: Deploy migration job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_MIGRATION_JOB_NAME}
+      - --project=quote-tool-483716
+      - --region=${_REGION}
+      - --image=${_IMAGE}
+      - --command=flask
+      - --args=db,upgrade,--directory,alembic
+      - --set-env-vars=APP_ENV=production,FSI_PRODUCTION=true,GCS_BUCKET_NAME=fsi_pod,FLASK_APP=wsgi:app
+      - --set-secrets=SECRET_KEY=${_SECRET_KEY_NAME}:latest,DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,DB_NAME=${_EXPENSE_DB_NAME_SECRET_NAME}:latest,DB_PASS=${_EXPENSE_DB_PASS_SECRET_NAME}:latest,DB_USER=${_EXPENSE_DB_USER_SECRET_NAME}:latest
+      - --add-cloudsql-instances=quote-tool-483716:us-central1:quote-postgres
+      - --max-retries=1
+      - --task-timeout=600s
+
+  - id: Run Alembic upgrade
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - ${_MIGRATION_JOB_NAME}
+      - --project=quote-tool-483716
+      - --region=${_REGION}
+      - --wait
+
   - id: Deploy to Cloud Run
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
@@ -37,6 +68,7 @@ images:
 
 substitutions:
   _SERVICE_NAME: fsi-pod
+  _MIGRATION_JOB_NAME: fsi-pod-db-migrate
   _REGION: us-central1
   _REPOSITORY: fsi
   _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
