@@ -236,7 +236,14 @@ def get_load_entries_by_identifier(identifier: str) -> list[LegacyLoadView | Loa
     ]
 
 
-def set_load_status(load_entry: LegacyLoadView | LoadBoard, action_type: str, latitude: str | None = None, longitude: str | None = None) -> None:
+def set_load_status(
+    load_entry: LegacyLoadView | LoadBoard,
+    action_type: str,
+    latitude: str | None = None,
+    longitude: str | None = None,
+    photo_blob_name: str | None = None,
+    signature_blob_name: str | None = None,
+) -> None:
     canonical_action = normalize_pod_action(action_type)
     next_status_by_action = {
         "SHIPPER_PICKUP": "In Progress",
@@ -257,6 +264,8 @@ def set_load_status(load_entry: LegacyLoadView | LoadBoard, action_type: str, la
         actor_user_id=g.current_user.id,
         latitude=latitude,
         longitude=longitude,
+        photo_blob_name=photo_blob_name,
+        signature_blob_name=signature_blob_name,
     )
 
 
@@ -400,7 +409,14 @@ def submit_pod(
             pod_record.consignee = load_board_entry.consignee
             pod_record.contact_name = load_board_entry.contact_name
             pod_record.phone = load_board_entry.phone
-            set_load_status(load_board_entry, canonical_action, latitude=latitude, longitude=longitude)
+            set_load_status(
+                load_board_entry,
+                canonical_action,
+                latitude=latitude,
+                longitude=longitude,
+                photo_blob_name=photo_uri,
+                signature_blob_name=sig_uri,
+            )
         else:
             # Path B: manual POD
             pod_record.shipper = shipper
