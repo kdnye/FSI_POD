@@ -10,6 +10,7 @@ os.environ.setdefault("PUBLIC_SERVICE_URL", "https://example.run.app")
 os.environ.setdefault("TASK_SERVICE_ACCOUNT_EMAIL", "tasks-invoker@example.iam.gserviceaccount.com")
 os.environ.setdefault("POSTMARK_SERVER_TOKEN", "test-postmark-token")
 os.environ.setdefault("POSTMARK_FROM_EMAIL", "notifications@example.com")
+os.environ.setdefault("TASKS_SHARED_SECRET", "test-task-secret")
 
 
 @pytest.fixture()
@@ -18,11 +19,13 @@ def app():
         {
             "TESTING": True,
             "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            "SQLALCHEMY_ENGINE_OPTIONS": {},
             "WTF_CSRF_ENABLED": False,
             "RATELIMIT_ENABLED": False,
             "GCP_PROJECT_ID": "test-project",
             "PUBLIC_SERVICE_URL": "https://example.run.app",
             "TASK_SERVICE_ACCOUNT_EMAIL": "tasks-invoker@example.iam.gserviceaccount.com",
+            "TASKS_SHARED_SECRET": "test-task-secret",
         }
     )
 

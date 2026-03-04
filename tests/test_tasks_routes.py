@@ -2,7 +2,7 @@ from app import db
 from models import User
 
 
-def test_send_email_task_route_dispatches_postmark(client, app, monkeypatch):
+def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeypatch):
     with app.app_context():
         driver = User(email="driver@example.com", password_hash="hash", employee_approved=True)
         db.session.add(driver)
@@ -18,7 +18,11 @@ def test_send_email_task_route_dispatches_postmark(client, app, monkeypatch):
 
         response = client.post(
             "/api/tasks/send-email",
-            headers={"X-CloudTasks-TaskName": "task-1", "X-Request-Id": "req-1"},
+            headers={
+                "X-CloudTasks-TaskName": "task-1",
+                "X-Request-Id": "req-1",
+                "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            },
             json={
                 "shipment_id": 44,
                 "action_type": "SHIPPER_PICKUP",
@@ -35,6 +39,31 @@ def test_send_email_task_route_dispatches_postmark(client, app, monkeypatch):
     assert calls[0]["hwb_number"] == "HWB44"
 
 
+def test_send_email_task_route_rejects_untrusted_direct_post(client, app):
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-2",
+            "X-Tasks-Auth": "wrong-secret",
+        },
+        json={"shipment_id": 1, "action_type": "SHIPPER_PICKUP", "actor_user_id": 1},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Invalid task authentication credentials."
+
+
+def test_send_email_task_route_rejects_missing_cloud_tasks_metadata(client, app):
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={"X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"]},
+        json={"shipment_id": 1, "action_type": "SHIPPER_PICKUP", "actor_user_id": 1},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Missing required Cloud Tasks metadata."
+
+
 def test_send_email_task_route_returns_retryable_error_when_send_fails(client, app, monkeypatch):
     with app.app_context():
         driver = User(email="driver2@example.com", password_hash="hash", employee_approved=True)
@@ -48,6 +77,10 @@ def test_send_email_task_route_returns_retryable_error_when_send_fails(client, a
 
         response = client.post(
             "/api/tasks/send-email",
+            headers={
+                "X-CloudTasks-TaskName": "task-3",
+                "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+            },
             json={
                 "shipment_id": 99,
                 "action_type": "SHIPPER_PICKUP",
@@ -63,7 +96,14 @@ def test_send_email_task_route_returns_retryable_error_when_send_fails(client, a
     assert payload["error"]["reason"] == "missing_recipients"
 
 
-def test_send_email_task_route_validates_payload(client):
-    response = client.post("/api/tasks/send-email", json={"shipment_id": 1})
+def test_send_email_task_route_validates_payload_after_auth(client, app):
+    response = client.post(
+        "/api/tasks/send-email",
+        headers={
+            "X-CloudTasks-TaskName": "task-4",
+            "X-Tasks-Auth": app.config["TASKS_SHARED_SECRET"],
+        },
+        json={"shipment_id": 1},
+    )
 
     assert response.status_code == 400
