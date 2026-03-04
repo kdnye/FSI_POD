@@ -35,6 +35,12 @@
             <button type="submit">Upload to Load Board</button>
         </form>
     </section>
+
+    <section style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+        <h2 style="margin-top: 0;">Ops/Admin Load Resolution</h2>
+        <p style="margin-top: 0;">Bulk resolution forcefully marks all active loads as cancelled.</p>
+        <button class="fsi-secondary-btn" type="button" onclick="executeClear('ALL')">Clear All Active Loads</button>
+    </section>
     {% endif %}
 
     {% if loads %}
@@ -50,6 +56,7 @@
                     <th>Status</th>
                     <th>Current Leg</th>
                     <th>Leg Status</th>
+                    {% if full_board_access %}<th>Resolve</th>{% endif %}
                     <th>POD Photo</th>
                     <th>POD Signature</th>
                     <th>Printed Name</th>
@@ -73,6 +80,9 @@
                     <td><span class="fsi-status-badge {{ status_class }}">{{ status_label }}</span></td>
                     <td>{{ (load.current_leg_type or '—') if load.current_leg_type is defined else '—' }}</td>
                     <td>{{ (load.current_leg_status or '—') if load.current_leg_status is defined else '—' }}</td>
+                    {% if full_board_access %}
+                    <td><button class="fsi-secondary-btn" type="button" onclick="executeClear('{{ load.hwb_number }}')">Resolve</button></td>
+                    {% endif %}
                     <td>
                         {% if load.pod_delivery_photo %}
                         <a href="{{ load.pod_delivery_photo }}" target="_blank" rel="noopener noreferrer">View photo</a>
@@ -97,4 +107,59 @@
     <p>{{ "No active loads found." if full_board_access else "No active loads assigned to you." }}</p>
     {% endif %}
 </section>
+
+{% if full_board_access %}
+<script>
+function executeClear(target) {
+    let resolution = "CANCELLED";
+
+    if (target === 'ALL') {
+        const userConfirmation = prompt('WARNING: This drops ALL active shipments.\nType "CLEAR ALL" to confirm:');
+        if (userConfirmation !== 'CLEAR ALL') {
+            alert('Action aborted.');
+            return;
+        }
+    } else {
+        const userConfirmation = prompt(
+            `Resolve HWB ${target}:\n` +
+            'Type "CANCEL" to mark as cancelled.\n' +
+            'Type "3RD PARTY" if completed by an external carrier.'
+        );
+
+        if (userConfirmation === 'CANCEL') {
+            resolution = 'CANCELLED';
+        } else if (userConfirmation === '3RD PARTY') {
+            resolution = 'COMPLETED_3RD_PARTY';
+        } else {
+            alert('Action aborted: Invalid confirmation phrase.');
+            return;
+        }
+    }
+
+    fetch("{{ url_for('paperwork.clear_load_board') }}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': "{{ csrf_token() }}"
+        },
+        body: JSON.stringify({
+            hwb_number: target,
+            resolution: resolution
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(`Error: ${data.error || 'Unknown error.'}`);
+        }
+    })
+    .catch(error => {
+        console.error('Fetch error:', error);
+        alert('A network error occurred.');
+    });
+}
+</script>
+{% endif %}
 {% endblock %}
