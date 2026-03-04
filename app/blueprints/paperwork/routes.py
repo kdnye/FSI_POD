@@ -631,7 +631,10 @@ def active_load_board():
     if load_hwbs:
         pod_records = (
             PODRecord.query
-            .filter(PODRecord.hwb_number.in_(load_hwbs), PODRecord.action_type == "Delivery")
+            .filter(
+                PODRecord.hwb_number.in_(load_hwbs),
+                PODRecord.action_type.in_(["CONSIGNEE_DROP", "Delivery"]),
+            )
             .order_by(PODRecord.id.desc())
             .all()
         )
