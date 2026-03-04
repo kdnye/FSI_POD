@@ -48,8 +48,10 @@
         <div class="fsi-form-grid pod-event-fieldset">
             <label>Action Type</label>
             <select name="action_type" id="action_type" class="fsi-input" required>
-                <option value="Pickup">Pickup</option>
-                <option value="Delivery">Delivery</option>
+                <option value="shipper pickup">Shipper Pickup (Leg 1 Start)</option>
+                <option value="origin airport drop">Origin Airport Drop (Leg 1 Complete)</option>
+                <option value="destination airport pickup">Destination Airport Pickup (Leg 3 Start)</option>
+                <option value="consignee drop">Consignee Drop (Final Delivery)</option>
             </select>
         </div>
 

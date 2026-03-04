@@ -5,7 +5,18 @@ from flask import Response
 from sqlalchemy import inspect, text
 
 from app import db
-from models import LoadBoard, PODRecord, Role, User
+from models import (
+    LoadBoard,
+    PODRecord,
+    Role,
+    Shipment,
+    ShipmentGroup,
+    ShipmentLeg,
+    ShipmentLegStatus,
+    ShipmentLegTransition,
+    ShipmentLegType,
+    User,
+)
 
 
 def _create_user(email: str, role: Role = Role.EMPLOYEE, employee_approved: bool = True) -> int:
@@ -120,6 +131,98 @@ def test_submit_pod_manual_path_persists_record_without_mutating_load_board(clie
     assert LoadBoard.query.count() == before_count
     unchanged = db.session.get(LoadBoard, "HWB-EXISTING-UNCHANGED")
     assert unchanged.status == "Pending"
+
+
+def test_submit_pod_rejects_out_of_order_leg_transition_with_clear_error(client, app, monkeypatch):
+    driver_id = _create_user("pod-transition-invalid@example.com")
+    _login(client, driver_id)
+    app.config["LOAD_BOARD_USE_SHIPMENTS"] = True
+
+    group = ShipmentGroup(mawb_number="MAWB-TRANSITION-400", carrier="TEST")
+    db.session.add(group)
+    db.session.flush()
+    shipment = Shipment(hwb_number="HWB-TRANSITION-400", shipment_group_id=group.id)
+    db.session.add(shipment)
+    db.session.flush()
+    db.session.add_all(
+        [
+            ShipmentLeg(
+                shipment_id=shipment.id,
+                leg_sequence=1,
+                leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
+                status=ShipmentLegStatus.ASSIGNED,
+                assigned_driver_id=driver_id,
+            ),
+            ShipmentLeg(
+                shipment_id=shipment.id,
+                leg_sequence=3,
+                leg_type=ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE,
+                status=ShipmentLegStatus.PENDING,
+                assigned_driver_id=driver_id,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("app.services.gcs.GCSService.upload_file", lambda *_args, **_kwargs: "gs://test/path")
+
+    response = client.post(
+        "/pod/event",
+        data=_pod_form_payload("HWB-TRANSITION-400", action_type="consignee drop"),
+        headers={"Accept": "application/json"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert "Cannot mark consignee drop before destination-airport pickup." in response.get_json()["error"]
+
+
+def test_submit_pod_records_immutable_leg_transition_audit_row(client, app, monkeypatch):
+    driver_id = _create_user("pod-transition-valid@example.com")
+    _login(client, driver_id)
+    app.config["LOAD_BOARD_USE_SHIPMENTS"] = True
+
+    group = ShipmentGroup(mawb_number="MAWB-TRANSITION-200", carrier="TEST")
+    db.session.add(group)
+    db.session.flush()
+    shipment = Shipment(hwb_number="HWB-TRANSITION-200", shipment_group_id=group.id)
+    db.session.add(shipment)
+    db.session.flush()
+    db.session.add_all(
+        [
+            ShipmentLeg(
+                shipment_id=shipment.id,
+                leg_sequence=1,
+                leg_type=ShipmentLegType.PICKUP_TO_ORIGIN_AIRPORT,
+                status=ShipmentLegStatus.IN_PROGRESS,
+                assigned_driver_id=driver_id,
+            ),
+            ShipmentLeg(
+                shipment_id=shipment.id,
+                leg_sequence=3,
+                leg_type=ShipmentLegType.DEST_AIRPORT_TO_CONSIGNEE,
+                status=ShipmentLegStatus.IN_PROGRESS,
+                assigned_driver_id=driver_id,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("app.services.gcs.GCSService.upload_file", lambda *_args, **_kwargs: "gs://test/path")
+
+    response = client.post(
+        "/pod/event",
+        data=_pod_form_payload("HWB-TRANSITION-200", action_type="consignee drop", latitude="33.45", longitude="-112.07"),
+        headers={"Accept": "application/json"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    transition = ShipmentLegTransition.query.filter_by(shipment_id=shipment.id, pod_action="CONSIGNEE_DROP").one()
+    assert transition.actor_user_id == driver_id
+    assert transition.from_status == ShipmentLegStatus.IN_PROGRESS
+    assert transition.to_status == ShipmentLegStatus.COMPLETED
+    assert transition.latitude == "33.45"
 
 
 def test_pod_scan_returns_enhanced_for_match_and_base_for_unmatched(client):

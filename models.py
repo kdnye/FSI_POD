@@ -243,6 +243,40 @@ class ShipmentLeg(db.Model):
     )
 
 
+class ShipmentLegTransition(db.Model):
+    __tablename__ = "shipment_leg_transitions"
+
+    id = db.Column(Integer, primary_key=True)
+    shipment_id = db.Column(Integer, ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False, index=True)
+    shipment_leg_id = db.Column(Integer, ForeignKey("shipment_legs.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = db.Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    pod_action = db.Column(String(64), nullable=False)
+    from_status = db.Column(
+        SQLAlchemyEnum(
+            ShipmentLegStatus,
+            name="shipment_leg_transition_from_status_enum",
+            native_enum=False,
+            create_constraint=True,
+            validate_strings=True,
+        ),
+        nullable=False,
+    )
+    to_status = db.Column(
+        SQLAlchemyEnum(
+            ShipmentLegStatus,
+            name="shipment_leg_transition_to_status_enum",
+            native_enum=False,
+            create_constraint=True,
+            validate_strings=True,
+        ),
+        nullable=False,
+    )
+    latitude = db.Column(String(32), nullable=True)
+    longitude = db.Column(String(32), nullable=True)
+    event_at_utc = db.Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at_utc = db.Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+
 class PODRecord(db.Model):
     __tablename__ = "pod_records"
 
