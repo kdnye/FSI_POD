@@ -591,6 +591,77 @@ def active_load_board():
     )
 
 
+@paperwork_bp.post("/load-board/clear")
+@require_employee_approval()
+def clear_load_board():
+    if not is_ops_or_admin_user():
+        return jsonify({"error": "Ops or Admin access required."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    target_hwb = (payload.get("hwb_number") or "").strip()
+    resolution = (payload.get("resolution") or "CANCELLED").strip().upper()
+
+    if not target_hwb:
+        return jsonify({"error": "Target HWB or 'ALL' required."}), 400
+
+    if resolution not in {"CANCELLED", "COMPLETED_3RD_PARTY"}:
+        return jsonify({"error": "Invalid resolution type."}), 400
+
+    def log_clearance(hwb_number: str, action_type: str) -> None:
+        db.session.add(
+            PODRecord(
+                hwb_number=hwb_number,
+                action_type=action_type,
+                driver_id=g.current_user.id,
+                recipient_name="SYSTEM_RESOLUTION",
+                delivery_photo="N/A",
+                signature_image="N/A",
+                reassignment_note=f"Record resolved as {action_type} by User {g.current_user.id}",
+            )
+        )
+
+    cleared_count = 0
+    try:
+        with db.session.begin_nested():
+            if target_hwb == "ALL":
+                legacy_loads = LoadBoard.query.filter(LoadBoard.status.notin_(["Delivered", "Cancelled"])).all()
+                for load in legacy_loads:
+                    load.status = "Cancelled"
+                    log_clearance(load.hwb_number, "CANCELLED")
+                    cleared_count += 1
+
+                shipments = Shipment.query.filter(
+                    Shipment.overall_status.notin_([ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED])
+                ).all()
+                for shipment in shipments:
+                    shipment.overall_status = ShipmentStatus.CANCELLED
+                    log_clearance(shipment.hwb_number, "CANCELLED")
+                    cleared_count += 1
+            else:
+                mapped_shipment_status = (
+                    ShipmentStatus.DELIVERED if resolution == "COMPLETED_3RD_PARTY" else ShipmentStatus.CANCELLED
+                )
+                mapped_legacy_status = "Delivered" if resolution == "COMPLETED_3RD_PARTY" else "Cancelled"
+
+                legacy_load = db.session.get(LoadBoard, target_hwb)
+                if legacy_load and legacy_load.status not in ["Delivered", "Cancelled"]:
+                    legacy_load.status = mapped_legacy_status
+                    log_clearance(legacy_load.hwb_number, resolution)
+                    cleared_count += 1
+
+                shipment = Shipment.query.filter_by(hwb_number=target_hwb).first()
+                if shipment and shipment.overall_status not in [ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED]:
+                    shipment.overall_status = mapped_shipment_status
+                    log_clearance(shipment.hwb_number, resolution)
+                    cleared_count += 1
+
+        db.session.commit()
+        return jsonify({"success": True, "message": f"Successfully resolved {cleared_count} records as {resolution}."}), 200
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"error": f"Database error: {str(exc)}"}), 500
+
+
 @paperwork_bp.post("/load-board/upload-csv")
 @require_employee_approval()
 def upload_load_board_csv():
