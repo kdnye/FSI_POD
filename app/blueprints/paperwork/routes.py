@@ -695,6 +695,10 @@ def active_load_board():
             or assigned_driver.email
         )
 
+    available_drivers = []
+    if full_board_access:
+        available_drivers = User.query.filter_by(is_active=True).order_by(User.name.asc(), User.email.asc()).all()
+
     return render_template(
         "paperwork/load_board.html",
         title="Active Load Board",
@@ -702,6 +706,7 @@ def active_load_board():
         full_board_access=full_board_access,
         show_delivered=show_delivered,
         show_cancelled=show_cancelled,
+        available_drivers=available_drivers,
     )
 
 
@@ -767,6 +772,46 @@ def clear_load_board():
     except Exception as exc:
         db.session.rollback()
         return jsonify({"error": f"Database error: {str(exc)}"}), 500
+
+
+@paperwork_bp.post("/load-board/assign-driver")
+@require_employee_approval()
+def assign_driver_to_load():
+    if not is_ops_or_admin_user():
+        return jsonify({"error": "Ops or Admin access required."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    target_hwb = (payload.get("hwb_number") or "").strip()
+    driver_id_raw = payload.get("driver_id")
+
+    if not target_hwb:
+        return jsonify({"error": "HWB number is required."}), 400
+
+    try:
+        driver_id = int(driver_id_raw) if driver_id_raw else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid driver id."}), 400
+
+    try:
+        shipment = Shipment.query.filter_by(hwb_number=target_hwb).first()
+        if not shipment:
+            return jsonify({"error": "Shipment not found."}), 404
+
+        active_leg = _shipment_current_leg(shipment)
+        if not active_leg:
+            return jsonify({"error": "No active leg found for this shipment."}), 400
+
+        active_leg.assigned_driver_id = driver_id
+        if driver_id and active_leg.status == ShipmentLegStatus.PENDING:
+            active_leg.status = ShipmentLegStatus.ASSIGNED
+        elif not driver_id and active_leg.status == ShipmentLegStatus.ASSIGNED:
+            active_leg.status = ShipmentLegStatus.PENDING
+
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 500
 
 
 @paperwork_bp.post("/load-board/upload-csv")

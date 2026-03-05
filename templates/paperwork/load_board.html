@@ -85,7 +85,20 @@
                     </td>
 
                     <td>{{ load.contact_name }}</td>
-                    <td>{{ load.current_leg_driver_name or '—' }}</td>
+                    <td>
+                        {% if full_board_access and load.status not in ['Delivered', 'Cancelled'] %}
+                        <select class="fsi-input" style="padding: 0.25rem; font-size: 0.9rem; min-width: 140px;" onchange="reassignDriver('{{ load.hwb_number }}', this.value)">
+                            <option value="">-- Unassigned --</option>
+                            {% for driver in available_drivers %}
+                            <option value="{{ driver.id }}" {% if load.assigned_driver == driver.id %}selected{% endif %}>
+                                {{ driver.name or (driver.first_name ~ ' ' ~ driver.last_name)|trim or driver.email }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        {{ load.current_leg_driver_name or '—' }}
+                        {% endif %}
+                    </td>
                     {% set status_class = load.stage_class if load.stage_class is defined and load.stage_class else (
                         'status-delivered' if load.status == 'Delivered' else
                         'status-in-air' if load.status == 'Picked Up' else
@@ -201,6 +214,32 @@ function executeClear(target) {
     .catch(error => {
         console.error('Fetch error:', error);
         alert('A network error occurred.');
+    });
+}
+
+function reassignDriver(target, driverId) {
+    fetch("{{ url_for('paperwork.assign_driver_to_load') }}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': "{{ csrf_token() }}"
+        },
+        body: JSON.stringify({
+            hwb_number: target,
+            driver_id: driverId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert(`Error updating driver: ${data.error || 'Unknown error.'}`);
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Fetch error:', error);
+        alert('A network error occurred while assigning the driver.');
+        location.reload();
     });
 }
 </script>
