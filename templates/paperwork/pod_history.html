@@ -32,13 +32,12 @@
                 <th align="left">HWB</th>
                 <th align="left">Action</th>
                 <th align="left">Recipient</th>
+                <th align="left">POD Photo</th>
+                <th align="left">Signature</th>
                 <th align="left">GPS</th>
-                <th align="left">Shipment</th>
                 <th align="left">Leg</th>
                 <th align="left">Shipper</th>
                 <th align="left">Consignee</th>
-                <th align="left">POD Photo</th>
-                <th align="left">Signature</th>
             </tr>
         </thead>
         <tbody>
@@ -47,6 +46,8 @@
                 <td>{{ record.hwb_number }}</td>
                 <td>{{ record.action_type }}</td>
                 <td>{{ record.recipient_name }}</td>
+                <td><a href="{{ record.delivery_photo }}" target="_blank" rel="noopener noreferrer">View POD photo</a></td>
+                <td><a href="{{ record.signature_image }}" target="_blank" rel="noopener noreferrer">View signature</a></td>
                 <td>
                     {% if record.latitude and record.longitude %}
                     {{ record.latitude }}, {{ record.longitude }}
@@ -54,7 +55,6 @@
                     --
                     {% endif %}
                 </td>
-                <td>{{ record.shipment_id or '--' }}</td>
                 <td>
                     {% if record.leg_id %}
                     #{{ record.leg_id }} / Seq {{ record.leg_sequence or '--' }} / {{ record.leg_type or '--' }}
@@ -64,8 +64,6 @@
                 </td>
                 <td>{{ record.shipper or 'Manual Entry' }}</td>
                 <td>{{ record.consignee or 'Manual Entry' }}</td>
-                <td><a href="{{ record.delivery_photo }}" target="_blank" rel="noopener noreferrer">View POD photo</a></td>
-                <td><a href="{{ record.signature_image }}" target="_blank" rel="noopener noreferrer">View signature</a></td>
             </tr>
             {% endfor %}
         </tbody>

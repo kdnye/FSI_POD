@@ -625,10 +625,7 @@ def active_load_board():
     if load_hwbs:
         pod_records = (
             PODRecord.query
-            .filter(
-                PODRecord.hwb_number.in_(load_hwbs),
-                PODRecord.action_type == "CONSIGNEE_DROP",
-            )
+            .filter(PODRecord.hwb_number.in_(load_hwbs))
             .order_by(PODRecord.id.desc())
             .all()
         )
@@ -656,7 +653,7 @@ def active_load_board():
 
     for load in loads:
         pod_record = latest_delivery_by_hwb.get(load.hwb_number)
-        if load.status == "Delivered" and pod_record:
+        if pod_record:
             load.pod_delivery_photo = pod_record.delivery_photo
             load.pod_signature_image = pod_record.signature_image
             load.pod_recipient_name = pod_record.recipient_name
