@@ -123,10 +123,18 @@ def generate_signed_url(blob_name: str, expiration_days: int = 7) -> str | None:
 
     try:
         storage = _get_storage_module()
-        default_credentials, _ = google.auth.default()
-        sa_email = getattr(default_credentials, "service_account_email", os.getenv("TASK_SERVICE_ACCOUNT_EMAIL"))
+        credentials, _ = google.auth.default()
+        sa_email = getattr(credentials, "service_account_email", None)
+
+        if sa_email == "default" or not sa_email:
+            sa_email = os.getenv("TASK_SERVICE_ACCOUNT_EMAIL")
+
+        if not sa_email:
+            logging.error("Failed to generate signed URL: No valid service account email found for impersonation.")
+            return None
+
         signing_credentials = impersonated_credentials.Credentials(
-            source_credentials=default_credentials,
+            source_credentials=credentials,
             target_principal=sa_email,
             target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
