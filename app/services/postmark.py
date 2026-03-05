@@ -5,6 +5,7 @@ from email.utils import parseaddr
 import requests
 from flask import current_app
 
+from app.services.gcs import build_media_access_url
 from models import NotificationSettings
 
 POSTMARK_EMAIL_ENDPOINT = "https://api.postmarkapp.com/email/withTemplate"
@@ -131,10 +132,13 @@ def send_shipment_alert(
     }
 
     if action == "CONSIGNEE_DROP":
-        if photo_url:
-            template_model["photo_url"] = photo_url
-        if signature_url:
-            template_model["signature_url"] = signature_url
+        resolved_photo_url = build_media_access_url(photo_url)
+        resolved_signature_url = build_media_access_url(signature_url)
+
+        if resolved_photo_url:
+            template_model["photo_url"] = resolved_photo_url
+        if resolved_signature_url:
+            template_model["signature_url"] = resolved_signature_url
 
     payload = {
         "From": from_email,
