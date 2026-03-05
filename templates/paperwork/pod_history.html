@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% block title %}{% if has_full_history_access %}POD History{% else %}My POD History{% endif %} | FSI{% endblock %}
-{% block main_container_class %}fsi-container--load-board{% endblock %}
+{% block title %}{{ "POD History" if has_full_history_access else "My POD History" }} | FSI{% endblock %}
+
+{% block main_container_class %}fsi-container--fluid{% endblock %}
 
 {% block content %}
-<section class="fsi-card fsi-card--load-board">
+<section class="fsi-card fsi-card--fluid">
     <h1 class="fsi-display">{% if has_full_history_access %}POD History{% else %}My POD History{% endif %}</h1>
 
     {% if has_full_history_access %}
