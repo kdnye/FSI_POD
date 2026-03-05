@@ -19,6 +19,8 @@ class EmailTaskPayload:
     shipment_id: int
     action_type: str
     actor_user_id: int
+    driver_email: str | None = None
+    driver_name: str | None = None
     hwb_number: str | None = None
     location_name: str | None = None
     photo_blob_name: str | None = None

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from app import db
 from app.services.tasks import EmailTaskPayload, enqueue_email_task
-from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus
+from models import Shipment, ShipmentLeg, ShipmentLegStatus, ShipmentLegTransition, ShipmentStatus, User
 
 
 class ShipmentTransitionError(ValueError):
@@ -85,11 +85,15 @@ def _enqueue_pod_notification(
     photo_blob_name: str | None,
     signature_blob_name: str | None,
 ) -> None:
+    actor = db.session.get(User, actor_user_id)
+
     enqueue_email_task(
         EmailTaskPayload(
             shipment_id=shipment.id,
             action_type=action,
             actor_user_id=actor_user_id,
+            driver_email=actor.email if actor else None,
+            driver_name=actor.name if actor else None,
             hwb_number=shipment.hwb_number,
             location_name=_resolve_location_name(action, leg1, leg3),
             photo_blob_name=photo_blob_name,

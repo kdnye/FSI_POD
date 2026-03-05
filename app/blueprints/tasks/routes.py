@@ -5,10 +5,9 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app import csrf, db
+from app import csrf
 from app.services.gcs import generate_signed_url
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
-from models import User
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -96,6 +95,8 @@ def send_email_task() -> tuple[dict[str, str], int]:
     location_name = payload.get("location_name")
     shipper_email = payload.get("shipper_email")
     consignee_email = payload.get("consignee_email")
+    driver_email = payload.get("driver_email")
+    driver_name = payload.get("driver_name")
     photo_blob_name = payload.get("photo_blob_name")
     signature_blob_name = payload.get("signature_blob_name")
 
@@ -118,10 +119,6 @@ def send_email_task() -> tuple[dict[str, str], int]:
         _log_task_validation_failure("malformed_actor_user_id", payload)
         return jsonify({"error": "Invalid actor_user_id for email task."}), 400
 
-    driver = db.session.get(User, actor_user_id_int)
-    if driver is None:
-        return jsonify({"error": "Driver user not found for email task."}), 404
-
     def _build_media_url(blob_name: object) -> str | None:
         if not isinstance(blob_name, str) or not blob_name.strip():
             return None
@@ -134,8 +131,8 @@ def send_email_task() -> tuple[dict[str, str], int]:
             action_type=normalized_action_type,
             hwb_number=hwb_number,
             location_name=location_name,
-            driver_email=driver.email,
-            driver_name=driver.name,
+            driver_email=driver_email if isinstance(driver_email, str) else None,
+            driver_name=driver_name if isinstance(driver_name, str) else None,
             photo_url=_build_media_url(photo_blob_name),
             signature_url=_build_media_url(signature_blob_name),
             shipper_email=shipper_email,
