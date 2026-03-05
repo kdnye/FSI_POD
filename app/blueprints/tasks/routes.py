@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
-from app.services.gcs import build_media_access_url
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
 from models import Shipment, User
 
@@ -140,48 +139,23 @@ def send_email_task() -> tuple[dict[str, str], int]:
         if not isinstance(driver_name, str) or not driver_name.strip():
             driver_name = driver.name
 
-    def _build_media_url(blob_name: object) -> str | None:
-        if not isinstance(blob_name, str) or not blob_name.strip():
-            return None
-        return build_media_access_url(blob_name)
-
     timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
 
-    try:
-        sent, reason = send_shipment_alert(
+    def _get_raw_string(val: object) -> str | None:
+        return val if isinstance(val, str) and val.strip() else None
+
+    sent, reason = send_shipment_alert(
             action_type=normalized_action_type,
             hwb_number=hwb_number,
             location_name=location_name,
             driver_email=driver_email if isinstance(driver_email, str) else None,
             driver_name=driver_name if isinstance(driver_name, str) else None,
-            photo_url=_build_media_url(photo_blob_name),
-            signature_url=_build_media_url(signature_blob_name),
+            photo_url=_get_raw_string(photo_blob_name),
+            signature_url=_get_raw_string(signature_blob_name),
             shipper_email=shipper_email,
             consignee_email=consignee_email,
             timestamp=timestamp,
-        )
-    except Exception as exc:
-        current_app.logger.exception(
-            "Failed to generate signed URLs for shipment alert task shipment_id=%s action_type=%s task_name=%s request_id=%s",
-            shipment_id,
-            action_type,
-            task_name,
-            request_id,
-            exc_info=exc,
-        )
-        return (
-            jsonify(
-                {
-                    "error": {
-                        "message": "Failed to generate media URLs for shipment alert.",
-                        "hwb_number": hwb_number,
-                        "action_type": action_type,
-                        "reason": "signed_url_generation_failed",
-                    }
-                }
-            ),
-            500,
-        )
+    )
 
     if not sent:
         if reason in {"missing_recipients", "disabled_settings"}:
