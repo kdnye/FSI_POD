@@ -19,27 +19,6 @@
         </ul>
     </section>
 
-    {% if full_board_access %}
-    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: stretch;">
-        <section style="flex: 0 0 33%; margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
-            <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
-            <p style="margin-top: 0;">Upload a CSV with required headers: <code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code>.</p>
-            <p style="margin-top: 0;">Optional headers: <code>first_mile_driver_id, last_mile_driver_id, status</code>. Airport fields must be 3-letter uppercase IATA codes (for example <code>PHX</code>), and return shipments must be uploaded as a separate booking row.</p>
-            <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="file" name="load_board_csv" accept=".csv" required>
-                <button type="submit">Upload to Load Board</button>
-            </form>
-        </section>
-
-        <section style="flex: 0 0 20%; margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
-            <h2 style="margin-top: 0;">Ops/Admin Load Resolution</h2>
-            <p style="margin-top: 0;">Bulk resolution forcefully marks all active loads as cancelled.</p>
-            <button class="fsi-secondary-btn" type="button" onclick="executeClear('ALL')">Clear All Active Loads</button>
-        </section>
-    </div>
-    {% endif %}
-
     {% if loads %}
     <div class="fsi-load-board-actions">
         <a class="fsi-secondary-btn" href="{{ url_for('paperwork.active_load_board', show_delivered='0' if show_delivered else '1', show_cancelled='1' if show_cancelled else '0') }}">
@@ -139,6 +118,27 @@
     </div>
     {% else %}
     <p>{{ "No active loads found." if full_board_access else "No active loads assigned to you." }}</p>
+    {% endif %}
+
+    {% if full_board_access %}
+    <div style="display: flex; gap: 1rem; margin-top: 2rem; align-items: stretch;">
+        <section style="flex: 0 0 33%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <h2 style="margin-top: 0;">Ops/Admin CSV Upload</h2>
+            <p style="margin-top: 0;">Upload a CSV with required headers: <code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code>.</p>
+            <p style="margin-top: 0;">Optional headers: <code>first_mile_driver_id, last_mile_driver_id, status</code>. Airport fields must be 3-letter uppercase IATA codes (for example <code>PHX</code>), and return shipments must be uploaded as a separate booking row.</p>
+            <form method="post" action="{{ url_for('paperwork.upload_load_board_csv') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="file" name="load_board_csv" accept=".csv" required>
+                <button type="submit">Upload to Load Board</button>
+            </form>
+        </section>
+
+        <section style="flex: 0 0 20%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <h2 style="margin-top: 0;">Ops/Admin Load Resolution</h2>
+            <p style="margin-top: 0;">Bulk resolution forcefully marks all active loads as cancelled.</p>
+            <button class="fsi-secondary-btn" type="button" onclick="executeClear('ALL')">Clear All Active Loads</button>
+        </section>
+    </div>
     {% endif %}
 </section>
 
