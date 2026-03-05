@@ -68,9 +68,23 @@ def send_shipment_alert(
         return False, "disabled_settings"
 
     recipients: list[str] = []
-    for email in [driver_email, shipper_email, consignee_email, *_parse_custom_cc_emails(settings.custom_cc_emails)]:
+    check_list = {
+        "Driver": driver_email,
+        "Shipper": shipper_email,
+        "Consignee": consignee_email,
+    }
+    for role, email in check_list.items():
         if _is_valid_email(email):
             recipients.append(email.strip())
+        else:
+            current_app.logger.info(
+                "Shipment alert %s: %s email is missing or invalid: %s",
+                hwb_number,
+                role,
+                email,
+            )
+
+    recipients.extend(_parse_custom_cc_emails(settings.custom_cc_emails))
 
     deduped: list[str] = []
     seen: set[str] = set()

@@ -60,7 +60,7 @@ def enqueue_email_task(payload: EmailTaskPayload) -> None:
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"{public_service_url.rstrip('/')}/api/tasks/send-email",
+            "url": f"{public_service_url.rstrip('/')}/tasks/api/tasks/send-email",
             "headers": {"Content-Type": "application/json"},
             "oidc_token": {"service_account_email": service_account_email},
             "body": json.dumps(asdict(payload)).encode("utf-8"),

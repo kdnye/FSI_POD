@@ -5,9 +5,10 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app import csrf
+from app import csrf, db
 from app.services.gcs import generate_signed_url
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
+from models import Shipment, User
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -114,10 +115,28 @@ def send_email_task() -> tuple[dict[str, str], int]:
         return jsonify({"error": "Invalid action_type for email task."}), 400
 
     try:
+        shipment_id_int = int(shipment_id)
+    except (TypeError, ValueError):
+        _log_task_validation_failure("malformed_shipment_id", payload)
+        return jsonify({"error": "Invalid shipment_id for email task."}), 400
+
+    try:
         actor_user_id_int = int(actor_user_id)
     except (TypeError, ValueError):
         _log_task_validation_failure("malformed_actor_user_id", payload)
         return jsonify({"error": "Invalid actor_user_id for email task."}), 400
+
+    shipment = db.session.get(Shipment, shipment_id_int)
+    if shipment is not None:
+        shipper_email = shipper_email or shipment.shipper_email
+        consignee_email = consignee_email or shipment.consignee_email
+
+    driver = db.session.get(User, actor_user_id_int)
+    if driver is not None:
+        if not isinstance(driver_email, str) or not driver_email.strip():
+            driver_email = driver.email
+        if not isinstance(driver_name, str) or not driver_name.strip():
+            driver_name = driver.name
 
     def _build_media_url(blob_name: object) -> str | None:
         if not isinstance(blob_name, str) or not blob_name.strip():
@@ -163,6 +182,17 @@ def send_email_task() -> tuple[dict[str, str], int]:
         )
 
     if not sent:
+        if reason in {"missing_recipients", "disabled_settings"}:
+            current_app.logger.info(
+                "Shipment alert task skipped action_type=%s hwb_number=%s reason=%s task_name=%s request_id=%s",
+                action_type,
+                hwb_number,
+                reason,
+                task_name,
+                request_id,
+            )
+            return jsonify({"status": "skipped", "reason": reason}), 200
+
         current_app.logger.error(
             "Shipment alert task failed action_type=%s hwb_number=%s reason=%s task_name=%s request_id=%s",
             action_type,
