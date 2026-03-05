@@ -22,15 +22,18 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
 
         monkeypatch.setattr("app.blueprints.tasks.routes.send_shipment_alert", _fake_send)
         monkeypatch.setattr("app.blueprints.tasks.routes.generate_signed_url", _fake_signed_url)
-        monkeypatch.setattr(
-            "app.blueprints.tasks.routes._verify_task_oidc_token",
-            lambda token, audience: {
+        observed = {}
+
+        def _fake_verify(token, audience):
+            observed["audience"] = audience
+            return {
                 "iss": "https://accounts.google.com",
                 "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
                 "email_verified": True,
                 "aud": audience,
-            },
-        )
+            }
+
+        monkeypatch.setattr("app.blueprints.tasks.routes._verify_task_oidc_token", _fake_verify)
 
         response = client.post(
             "/tasks/api/tasks/send-email",
@@ -63,6 +66,7 @@ def test_send_email_task_route_accepts_trusted_task_request(client, app, monkeyp
     assert calls[0]["photo_url"] == "https://signed/pods/photo.jpg"
     assert calls[0]["signature_url"] == "https://signed/pods/signature.jpg"
     assert generated_for == ["pods/photo.jpg", "pods/signature.jpg"]
+    assert observed["audience"] == "https://example.run.app/tasks/api/tasks/send-email"
 
 
 def test_send_email_task_route_passes_none_urls_when_blob_names_absent(client, app, monkeypatch):
