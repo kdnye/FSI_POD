@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 from datetime import timedelta
+from urllib.parse import urlparse
 
 from flask import current_app, has_app_context
 from werkzeug.datastructures import FileStorage
@@ -50,6 +51,36 @@ class GCSService:
             return None
 
 
+
+
+def build_media_access_url(blob_name: str | None, public_base_url: str | None = None) -> str | None:
+    cleaned_blob_name = str(blob_name or "").strip()
+    if not cleaned_blob_name:
+        return None
+
+    if cleaned_blob_name.startswith(("http://", "https://")):
+        return cleaned_blob_name
+
+    signed_url = generate_signed_url(cleaned_blob_name)
+    if signed_url:
+        return signed_url
+
+    if cleaned_blob_name.startswith("gs://"):
+        return None
+
+    base_url = str(public_base_url or "").strip().rstrip("/")
+    if not base_url:
+        if has_app_context():
+            base_url = str(current_app.config.get("PUBLIC_SERVICE_URL", "")).strip().rstrip("/")
+        if not base_url:
+            base_url = str(os.getenv("PUBLIC_SERVICE_URL", "")).strip().rstrip("/")
+
+    if not base_url:
+        return None
+
+    normalized_path = cleaned_blob_name if cleaned_blob_name.startswith("/") else f"/{cleaned_blob_name}"
+    return f"{base_url}{normalized_path}"
+
 def _get_storage_module():
     try:
         from google.cloud import storage
@@ -63,17 +94,27 @@ def generate_signed_url(blob_name: str, expiration_days: int = 7) -> str | None:
     if not cleaned_blob_name:
         return None
 
+    bucket_name = ""
+    if has_app_context():
+        bucket_name = current_app.config.get("GCS_BUCKET_NAME", "").strip()
+    if not bucket_name:
+        bucket_name = os.getenv("GCS_BUCKET_NAME", "").strip()
+
+    if cleaned_blob_name.startswith("gs://"):
+        parsed = urlparse(cleaned_blob_name)
+        if not parsed.netloc or not parsed.path:
+            return None
+        blob_bucket_name = parsed.netloc.strip()
+        cleaned_blob_name = parsed.path.lstrip("/")
+        if blob_bucket_name:
+            bucket_name = blob_bucket_name
+
     cleaned_blob_name = cleaned_blob_name.lstrip("/")
     if cleaned_blob_name.startswith("POD/"):
         cleaned_blob_name = cleaned_blob_name[4:]
     if cleaned_blob_name in {"", "."} or ".." in cleaned_blob_name.split("/"):
         return None
 
-    bucket_name = ""
-    if has_app_context():
-        bucket_name = current_app.config.get("GCS_BUCKET_NAME", "").strip()
-    if not bucket_name:
-        bucket_name = os.getenv("GCS_BUCKET_NAME", "").strip()
     if not bucket_name:
         logging.warning("Signed URL generation skipped: GCS_BUCKET_NAME is not configured.")
         return None
