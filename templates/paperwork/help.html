@@ -58,19 +58,30 @@
         <hr style="border: 0; border-top: 1px solid var(--border-color, #eee); margin-bottom: 1.25rem;">
         <h2>Operations Instructions</h2>
 
-        <h3>Load Board Management</h3>
-        <p>Open <strong>Active Load Board</strong> to view current company shipments and status.</p>
+        <h3>Load Board Filters & Visibility</h3>
+        <p>Use the toggles at the top of the Active Load Board to adjust visibility:</p>
+        <ul>
+            <li><strong>Show Delivered:</strong> Displays loads that have reached "Consignee Drop" (final delivery). By default, these hide after 4 hours to keep the board clean.</li>
+            <li><strong>Show Cancelled:</strong> Reveals loads that were manually cancelled or soft-deleted.</li>
+        </ul>
 
-        <h3>CSV Uploads</h3>
-        <p>Ops/Admin CSV uploads require the following headers:</p>
-        <p><code>Mawb#, HWB, Org, Dest, PU Driver, DEL Driver</code></p>
-        <p>Use the upload tool to import rows and assign them into the live load workflow.</p>
+        <h3>Understanding Workflow Stages</h3>
+        <p>The Load Board tracks physical progression across three legs. The UI automatically advances as drivers log POD events:</p>
+        <ul>
+            <li><strong>Awaiting Pickup / En Route:</strong> The Pickup Driver is actively assigned to Leg 1.</li>
+            <li><strong>At Origin Airport (In Transit):</strong> Leg 1 is complete. The freight is "in the air" (Leg 2). The board pivots to display the Delivery Driver assigned to Leg 3.</li>
+            <li><strong>Out for Delivery:</strong> The freight has been recovered at the destination airport, and the Delivery Driver is heading to the Consignee.</li>
+            <li><strong>Delivered:</strong> Final delivery is complete.</li>
+        </ul>
 
-        <h3>Live Dashboard</h3>
-        <p>Use the Live Ops Dashboard to monitor real-time sync and shipment activity.</p>
+        <h3>CSV Uploads (Source of Truth)</h3>
+        <p>Ops/Admin CSV uploads require the following headers: <code>Mawb#, HWB, Org, Dest, PU Driver, DEL Driver</code>.</p>
+        <div class="fsi-help-warning" style="border-left-color: #ff9800; background-color: rgba(255, 152, 0, 0.1);">
+            <p style="margin: 0;"><strong>Warning:</strong> Uploading a CSV forcefully overwrites existing driver assignments and leg statuses. To prevent data drift, do not upload a stale CSV if drivers have already made physical progress on those loads.</p>
+        </div>
 
-        <h3>POD Export</h3>
-        <p>Download the global POD history CSV from the POD History export section.</p>
+        <h3>Live Dashboard & POD Exports</h3>
+        <p>Use the Live Ops Dashboard to monitor real-time sync, or download the global POD history CSV from the POD History export section.</p>
     </section>
     {% endif %}
 
@@ -79,16 +90,25 @@
         <hr style="border: 0; border-top: 1px solid var(--border-color, #eee); margin-bottom: 1.25rem;">
         <h2>Administrator Instructions</h2>
 
+        <h3>System Overrides & Load Clearance</h3>
+        <p>Admins can manually override shipment statuses using the <strong>Resolve</strong> buttons on the Load Board.</p>
+        <ul>
+            <li><strong>CANCEL:</strong> Soft-deletes the load (moves it to a Cancelled state).</li>
+            <li><strong>3RD PARTY:</strong> Marks the load as Delivered when completed by an external carrier.</li>
+        </ul>
+
+        <h4>Bulk Clear / Hard Delete</h4>
+        <p>Use the "Clear All Active Loads" button to wipe the board. You will be prompted for a confirmation phrase:</p>
+        <ul>
+            <li>Type <code>CLEAR ALL</code> to soft-delete (Cancel) all active shipments.</li>
+            <li>Type <code>HARD DELETE</code> to permanently erase all active shipments from the database. Use this to cleanly purge bad test data before a fresh CSV upload.</li>
+        </ul>
+
         <h3>User Management</h3>
         <p>
             In the Admin Dashboard (<code>/account/admin/users</code>), approve pending employees,
             assign roles (<code>SUPERVISOR</code>, <code>FINANCE</code>, <code>ADMIN</code>),
             and toggle Ops membership for qualified users.
-        </p>
-
-        <h3>System Overrides</h3>
-        <p>
-            Use <strong>Resolve</strong> controls to force-cancel loads or mark loads complete when a third-party carrier finishes delivery.
         </p>
     </section>
     {% endif %}
