@@ -43,7 +43,7 @@ def _validate_task_request() -> tuple[dict[str, str], int] | None:
     if not token:
         return jsonify({"error": "Missing Bearer token for task request."}), 403
 
-    expected_audience = (current_app.config.get("TASKS_EXPECTED_AUDIENCE") or "").strip()
+    expected_audience = request.base_url
     if not expected_audience:
         return jsonify({"error": "Task endpoint audience is not configured."}), 403
 
