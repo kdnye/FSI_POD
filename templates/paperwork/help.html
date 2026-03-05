@@ -13,38 +13,38 @@
         <p>The system dynamically changes what is required based on the Action Type you select. Always start by scanning or typing the HWB.</p>
         
         <ul style="list-style-type: none; padding-left: 0;">
-            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #2c3e50;">1. Shipper Pickup (Leg 1 Start)</h4>
+            <li class="fsi-help-card fsi-help-card--pickup">
+                <h4>1. Shipper Pickup (Leg 1 Start)</h4>
                 <p><strong>Required:</strong> HWB Number, Action Type.</p>
                 <p><strong>Optional:</strong> Recipient Name, Photo, Signature.</p>
                 <p><em>Action: Scan the freight at the pickup location and submit to mark it "In Progress".</em></p>
             </li>
 
-            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #e3f2fd; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #1565c0;">2. Origin Airport Drop (Leg 1 Complete)</h4>
+            <li class="fsi-help-card fsi-help-card--origin">
+                <h4>2. Origin Airport Drop (Leg 1 Complete)</h4>
                 <p><strong>Required:</strong> HWB Number, Action Type, <strong>Recipient Name</strong>.</p>
                 <p><strong>Instructions:</strong> You must enter the <strong>Airline Name</strong> or the Receiving Agent into the "Recipient Name" field. Photos and Signatures are optional.</p>
             </li>
 
-            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #2c3e50;">3. Destination Airport Pickup (Leg 3 Start)</h4>
+            <li class="fsi-help-card fsi-help-card--dest">
+                <h4>3. Destination Airport Pickup (Leg 3 Start)</h4>
                 <p><strong>Required:</strong> HWB Number, Action Type.</p>
                 <p><strong>Optional:</strong> Recipient Name, Photo, Signature.</p>
                 <p><em>Action: Scan the freight when recovering it from the destination airport to begin the final mile.</em></p>
             </li>
 
-            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #e8f5e9; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #2e7d32;">4. Consignee Drop (Final Delivery)</h4>
+            <li class="fsi-help-card fsi-help-card--delivery">
+                <h4>4. Consignee Drop (Final Delivery)</h4>
                 <p><strong>Required:</strong> HWB Number, Action Type, <strong>Recipient Name, POD Photo, AND Consignee Signature</strong>.</p>
                 <p><strong>Instructions:</strong> This is the final milestone. The system will reject the submission if the name, photo, or signature are missing.</p>
             </li>
         </ul>
 
         <h3>Off-Sheet Freight Reassignment</h3>
-        <p style="padding: 1rem; border-left: 4px solid #d32f2f; background: #ffebee;">
-            If a scanned HWB is currently assigned to another driver/load, the system will show an <strong>off-sheet freight warning</strong> before allowing any status event to be submitted.
-            Checking the confirmation box confirms you are reassigning that freight to your active workflow. This warning behavior is designed to prevent accidental load theft, duplicate handling, or incorrect custody updates.
-        </p>
+        <div class="fsi-help-warning">
+            <p style="margin: 0;">If a scanned HWB is currently assigned to another driver/load, the system will show an <strong>off-sheet freight warning</strong> before allowing any status event to be submitted.
+            Checking the confirmation box confirms you are reassigning that freight to your active workflow. This warning behavior is designed to prevent accidental load theft, duplicate handling, or incorrect custody updates.</p>
+        </div>
 
         <h3>Batch Uploads</h3>
         <p>
@@ -55,7 +55,7 @@
 
     {% if is_ops %}
     <section style="margin-top: 1.25rem;">
-        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 1.25rem;">
+        <hr style="border: 0; border-top: 1px solid var(--border-color, #eee); margin-bottom: 1.25rem;">
         <h2>Operations Instructions</h2>
 
         <h3>Load Board Management</h3>
@@ -76,7 +76,7 @@
 
     {% if is_admin %}
     <section style="margin-top: 1.25rem;">
-        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 1.25rem;">
+        <hr style="border: 0; border-top: 1px solid var(--border-color, #eee); margin-bottom: 1.25rem;">
         <h2>Administrator Instructions</h2>
 
         <h3>User Management</h3>
