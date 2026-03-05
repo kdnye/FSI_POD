@@ -14,6 +14,12 @@ _ACTION_TO_SETTING = {
     "DEST_AIRPORT_PICKUP": "notify_dest_pickup",
     "CONSIGNEE_DROP": "notify_consignee_drop",
 }
+_ACTION_TO_TEMPLATE = {
+    "SHIPPER_PICKUP": "pod-transit-notification",
+    "ORIGIN_AIRPORT_DROP": "pod-transit-notification",
+    "DEST_AIRPORT_PICKUP": "pod-transit-notification",
+    "CONSIGNEE_DROP": "pod-delivery-notification",
+}
 ALLOWED_SHIPMENT_ALERT_ACTIONS = frozenset(_ACTION_TO_SETTING)
 
 
@@ -114,21 +120,28 @@ def send_shipment_alert(
         return False, "credential_or_config_issue"
 
     action_display = action.replace("_", " ").title().replace("Dest", "Destination")
+    template_alias = _ACTION_TO_TEMPLATE.get(action, "pod-transit-notification")
+
+    template_model = {
+        "action_name": action_display,
+        "hwb_number": hwb_number or "N/A",
+        "timestamp": timestamp,
+        "location_name": location_name or "N/A",
+        "driver_name": driver_name or "N/A",
+    }
+
+    if action == "CONSIGNEE_DROP":
+        if photo_url:
+            template_model["photo_url"] = photo_url
+        if signature_url:
+            template_model["signature_url"] = signature_url
 
     payload = {
         "From": from_email,
         "To": ",".join(deduped),
-        "TemplateAlias": "pod-event-notification",
-        "TemplateModel": {
-            "action_name": action_display,
-            "hwb_number": hwb_number or "",
-            "timestamp": timestamp,
-            "location_name": location_name or "",
-            "driver_name": driver_name or "",
-            "photo_url": photo_url or "",
-            "signature_url": signature_url or "",
-        },
-        "MessageStream": "pod",  # Added to route via the dedicated pod stream
+        "TemplateAlias": template_alias,
+        "TemplateModel": template_model,
+        "MessageStream": "pod",
     }
 
     try:
@@ -144,12 +157,13 @@ def send_shipment_alert(
         )
         response.raise_for_status()
     except requests.RequestException as exc:
-        current_app.logger.exception(
-            "Shipment alert failed: Postmark request exception action_type=%s hwb_number=%s error=%s",
+        error_body = exc.response.text if exc.response is not None else str(exc)
+        current_app.logger.error(
+            "Shipment alert failed: Postmark exception action_type=%s hwb_number=%s details=%s",
             action,
             hwb_number,
-            exc,
+            error_body,
         )
-        return False, "credential_or_config_issue"
+        return False, "postmark_api_rejection"
 
     return True, "sent"
