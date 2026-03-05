@@ -242,6 +242,46 @@ function reassignDriver(target, driverId) {
         location.reload();
     });
 }
+
+// --- Background Auto-Refresh Logic ---
+const REFRESH_INTERVAL_MS = 30000; // 30 seconds
+
+async function fetchLatestBoard() {
+    try {
+        // Fetch the current URL (preserves active filters like show_delivered)
+        const response = await fetch(window.location.href, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        if (!response.ok) return;
+        const htmlText = await response.text();
+
+        // Parse the returned HTML into a virtual DOM
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
+
+        // Isolate the new table body
+        const newTbody = doc.querySelector('.fsi-load-board-table tbody');
+        const currentTbody = document.querySelector('.fsi-load-board-table tbody');
+
+        if (newTbody && currentTbody) {
+            // SAFEGUARD: Do not replace the DOM if the user is currently focused on a select dropdown
+            const activeElement = document.activeElement;
+            const isInteracting = currentTbody.contains(activeElement);
+
+            if (!isInteracting) {
+                currentTbody.innerHTML = newTbody.innerHTML;
+            }
+        }
+    } catch (error) {
+        console.error('Background refresh failed:', error);
+    }
+}
+
+// Initialize the interval when the DOM loads
+document.addEventListener('DOMContentLoaded', () => {
+    setInterval(fetchLatestBoard, REFRESH_INTERVAL_MS);
+});
 </script>
 {% endif %}
 {% endblock %}
