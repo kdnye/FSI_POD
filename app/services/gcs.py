@@ -5,6 +5,7 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 import google.auth
+from google.auth import impersonated_credentials
 from flask import current_app, has_app_context
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -122,16 +123,20 @@ def generate_signed_url(blob_name: str, expiration_days: int = 7) -> str | None:
 
     try:
         storage = _get_storage_module()
-        credentials, _ = google.auth.default()
-        client = storage.Client(credentials=credentials)
+        default_credentials, _ = google.auth.default()
+        sa_email = getattr(default_credentials, "service_account_email", os.getenv("TASK_SERVICE_ACCOUNT_EMAIL"))
+        signing_credentials = impersonated_credentials.Credentials(
+            source_credentials=default_credentials,
+            target_principal=sa_email,
+            target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        client = storage.Client(credentials=signing_credentials)
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(cleaned_blob_name)
-        sa_email = getattr(credentials, "service_account_email", os.getenv("TASK_SERVICE_ACCOUNT_EMAIL"))
         return blob.generate_signed_url(
             version="v4",
             expiration=timedelta(days=expiration_days),
             method="GET",
-            service_account_email=sa_email,
         )
     except Exception as exc:
         logging.error("Failed to generate signed URL for blob '%s': %s", cleaned_blob_name, exc)
