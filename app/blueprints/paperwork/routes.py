@@ -260,10 +260,11 @@ def set_load_status(
     signature_blob_name: str | None = None,
 ) -> None:
     canonical_action = normalize_pod_action(action_type)
+    # Align the legacy status updates to explicitly trigger the correct UI stages.
     next_status_by_action = {
         "SHIPPER_PICKUP": "In Progress",
         "ORIGIN_AIRPORT_DROP": "Picked Up",
-        "DEST_AIRPORT_PICKUP": "In Progress",
+        "DEST_AIRPORT_PICKUP": "Out for Delivery",
         "CONSIGNEE_DROP": "Delivered",
     }
     next_status = next_status_by_action[canonical_action]
