@@ -116,6 +116,13 @@ def apply_pod_transition(
     leg3 = legs_by_sequence.get(3)
     now_utc = datetime.now(timezone.utc)
 
+    # Force tracking of object mutations
+    db.session.add(shipment)
+    if leg1:
+        db.session.add(leg1)
+    if leg3:
+        db.session.add(leg3)
+
     if action == "SHIPPER_PICKUP":
         if not leg1:
             raise ShipmentTransitionError("Cannot start shipper pickup: shipment leg 1 is missing.")
