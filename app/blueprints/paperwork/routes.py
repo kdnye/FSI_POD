@@ -325,7 +325,7 @@ def submit_pod(
     *,
     hwb_number: str,
     action_type: str,
-    recipient_name: str,
+    recipient_name: str | None,
     pod_photo,
     signature_file,
     latitude: str | None,
@@ -340,10 +340,17 @@ def submit_pod(
     """Persist POD data in hybrid mode and keep legacy POD event logging."""
     canonical_action = normalize_pod_action(action_type)
     action_folder = canonical_action.lower()
-    if not pod_photo or not getattr(pod_photo, "filename", ""):
-        raise ValueError("POD photo is required.")
-    if not signature_file:
-        raise ValueError("Signature image is required.")
+    # Conditional Validation
+    if canonical_action == "CONSIGNEE_DROP":
+        if not recipient_name:
+            raise ValueError("Recipient name is required for consignee drop.")
+        if not pod_photo or not getattr(pod_photo, "filename", ""):
+            raise ValueError("POD photo is required for consignee drop.")
+        if not signature_file:
+            raise ValueError("Signature image is required for consignee drop.")
+    elif canonical_action == "ORIGIN_AIRPORT_DROP":
+        if not recipient_name:
+            raise ValueError("Recipient name is required for origin airport drop.")
 
     target_load_entries = get_load_entries_by_identifier(hwb_number)
     user_has_full_board_rights = is_ops_or_admin_user()
@@ -357,10 +364,18 @@ def submit_pod(
     if is_off_sheet and not off_sheet_confirmed:
         raise ValueError("Off-sheet completion requires confirmation.")
 
-    photo_uri = GCSService.upload_file(pod_photo, folder=f"pod_photos/{action_folder}")
-    sig_uri = GCSService.upload_file(signature_file, folder=f"signatures/{action_folder}")
-    if not photo_uri or not sig_uri:
-        raise ValueError("Failed to upload POD assets.")
+    # Conditional Uploads
+    photo_uri = None
+    if pod_photo and getattr(pod_photo, "filename", ""):
+        photo_uri = GCSService.upload_file(pod_photo, folder=f"pod_photos/{action_folder}")
+        if not photo_uri:
+            raise ValueError("Failed to upload POD photo.")
+
+    sig_uri = None
+    if signature_file:
+        sig_uri = GCSService.upload_file(signature_file, folder=f"signatures/{action_folder}")
+        if not sig_uri:
+            raise ValueError("Failed to upload signature image.")
 
     persisted_reassignment_note = None
     if is_off_sheet and off_sheet_confirmed and off_sheet_entries:
@@ -391,7 +406,7 @@ def submit_pod(
             hwb_number=target_hwb_number,
             delivery_photo=photo_uri,
             signature_image=sig_uri,
-            recipient_name=recipient_name,
+            recipient_name=recipient_name or "",
             driver_id=g.current_user.id,
             action_type=canonical_action,
             off_sheet_confirmed=off_sheet_confirmed,
@@ -469,13 +484,6 @@ def log_pod_event():
         flash(message["error"])
         return redirect(url_for("paperwork.log_pod_event"))
 
-    if not recipient_name:
-        message = {"error": "Recipient name is required."}
-        if is_ajax:
-            return jsonify(message), 400
-        flash(message["error"])
-        return redirect(url_for("paperwork.log_pod_event"))
-    
     # 1. Handle Native Photo File
     pod_photo = request.files.get("pod_photo")
     
@@ -505,7 +513,7 @@ def log_pod_event():
         processed_count = submit_pod(
             hwb_number=hwb_number,
             action_type=action_type,
-            recipient_name=recipient_name,
+            recipient_name=recipient_name or None,
             pod_photo=pod_photo,
             signature_file=signature_file,
             latitude=lat,

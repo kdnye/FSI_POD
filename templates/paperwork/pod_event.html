@@ -60,17 +60,17 @@
         </div>
 
         <div class="fsi-form-grid pod-event-fieldset">
-            <label>Recipient Name</label>
-            <input type="text" id="recipient_name" name="recipient_name" class="fsi-input" required>
+            <label id="label_recipient_name">Recipient Name <span style="color:red">*</span></label>
+            <input type="text" id="recipient_name" name="recipient_name" class="fsi-input">
         </div>
 
         <div class="fsi-form-grid pod-event-fieldset">
-            <label>Capture POD Photo</label>
-            <input type="file" id="pod_photo" name="pod_photo" accept="image/*" capture="environment" class="fsi-input" required>
+            <label id="label_pod_photo">Capture POD Photo <span style="color:red">*</span></label>
+            <input type="file" id="pod_photo" name="pod_photo" accept="image/*" capture="environment" class="fsi-input">
         </div>
 
         <div class="fsi-form-grid pod-event-fieldset">
-            <label>Consignee Signature</label>
+            <label id="label_signature">Consignee Signature <span style="color:red">*</span></label>
             <div class="pod-signature-shell">
                 <canvas id="signature-pad" class="pod-signature-canvas" width="400" height="200" style="touch-action: none;"></canvas>
             </div>
@@ -116,6 +116,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const summaryShell = document.getElementById('load-board-summary');
     const manualPodFieldsShell = document.getElementById('manual-pod-fields');
     const modeText = document.getElementById('scan-mode');
+    const actionTypeSelect = document.getElementById('action_type');
+    const recipientNameInput = document.getElementById('recipient_name');
+    const podPhotoInput = document.getElementById('pod_photo');
     const offSheetWarningShell = document.getElementById('off-sheet-warning');
     const offSheetWarningText = document.getElementById('off-sheet-warning-text');
     const offSheetConfirmCheckbox = document.getElementById('off-sheet-confirm-checkbox');
@@ -123,6 +126,29 @@ document.addEventListener("DOMContentLoaded", function() {
     const mawbListContainer = document.getElementById('mawb-hwb-list-container');
     const mawbList = document.getElementById('mawb-hwb-list');
     let warningRequired = false;
+
+    function updateFormRequirements() {
+        const action = actionTypeSelect.value;
+        if (action === 'consignee drop') {
+            recipientNameInput.required = true;
+            podPhotoInput.required = true;
+            document.getElementById('label_recipient_name').innerHTML = 'Recipient Name <span style="color:red">*</span>';
+            document.getElementById('label_pod_photo').innerHTML = 'Capture POD Photo <span style="color:red">*</span>';
+            document.getElementById('label_signature').innerHTML = 'Consignee Signature <span style="color:red">*</span>';
+        } else if (action === 'origin airport drop') {
+            recipientNameInput.required = true;
+            podPhotoInput.required = false;
+            document.getElementById('label_recipient_name').innerHTML = 'Recipient Name <span style="color:red">*</span>';
+            document.getElementById('label_pod_photo').innerHTML = 'Capture POD Photo (Optional)';
+            document.getElementById('label_signature').innerHTML = 'Consignee Signature (Optional)';
+        } else {
+            recipientNameInput.required = false;
+            podPhotoInput.required = false;
+            document.getElementById('label_recipient_name').innerHTML = 'Recipient Name (Optional)';
+            document.getElementById('label_pod_photo').innerHTML = 'Capture POD Photo (Optional)';
+            document.getElementById('label_signature').innerHTML = 'Consignee Signature (Optional)';
+        }
+    }
 
     function resetManualPodFields() {
         document.getElementById('shipper').value = '';
@@ -245,12 +271,15 @@ document.addEventListener("DOMContentLoaded", function() {
     resizeCanvas();
 
     document.getElementById('clear-signature').addEventListener('click', () => signaturePad.clear());
+    actionTypeSelect.addEventListener('change', updateFormRequirements);
+    updateFormRequirements();
 
     document.getElementById('podEventForm').addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        if (signaturePad.isEmpty()) {
-            alert("Please provide a signature.");
+        const action = document.getElementById('action_type').value;
+        if (action === 'consignee drop' && signaturePad.isEmpty()) {
+            alert("Please provide a signature for delivery.");
             return;
         }
 
@@ -267,7 +296,9 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!document.getElementById('latitude').value) await captureLocation();
 
         const formData = new FormData(this);
-        formData.append('signature_base64', signaturePad.toDataURL("image/png"));
+        if (!signaturePad.isEmpty()) {
+            formData.append('signature_base64', signaturePad.toDataURL("image/png"));
+        }
         formData.append('off_sheet_confirmed', warningRequired ? String(offSheetConfirmCheckbox.checked) : 'false');
         formData.append('reassignment_note', reassignmentNoteInput.value.trim());
 
