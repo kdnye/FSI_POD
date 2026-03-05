@@ -265,11 +265,14 @@ async function fetchLatestBoard() {
         const currentTbody = document.querySelector('.fsi-load-board-table tbody');
 
         if (newTbody && currentTbody) {
-            // SAFEGUARD: Do not replace the DOM if the user is currently focused on a select dropdown
+            // SAFEGUARD: Only skip refresh while the user is actively editing within table inputs.
             const activeElement = document.activeElement;
-            const isInteracting = currentTbody.contains(activeElement);
+            const isEditing =
+                activeElement &&
+                ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeElement.tagName) &&
+                currentTbody.contains(activeElement);
 
-            if (!isInteracting) {
+            if (!isEditing) {
                 currentTbody.innerHTML = newTbody.innerHTML;
             }
         }
