@@ -132,7 +132,7 @@ def get_runtime_config() -> dict:
         ).strip(),
         "TASKS_EXPECTED_AUDIENCE": _get_env(
             "TASKS_EXPECTED_AUDIENCE",
-            default=f"{public_service_url.rstrip('/')}/api/tasks/send-email" if public_service_url else "",
+            default=f"{public_service_url.rstrip('/')}/tasks/api/tasks/send-email" if public_service_url else "",
             required_in_production=True,
         ).strip(),
         "TASKS_SHARED_SECRET": _get_env("TASKS_SHARED_SECRET", "", required_in_production=True).strip(),

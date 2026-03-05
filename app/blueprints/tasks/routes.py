@@ -43,13 +43,15 @@ def _validate_task_request() -> tuple[dict[str, str], int] | None:
     if not token:
         return jsonify({"error": "Missing Bearer token for task request."}), 403
 
-    expected_audience = request.base_url
-    if not expected_audience:
-        return jsonify({"error": "Task endpoint audience is not configured."}), 403
-
     expected_invoker_email = (current_app.config.get("TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL") or "").strip()
     if not expected_invoker_email:
         return jsonify({"error": "Task endpoint invoker is not configured."}), 403
+
+    public_service_url = (current_app.config.get("PUBLIC_SERVICE_URL") or "").strip().rstrip("/")
+    if not public_service_url:
+        return jsonify({"error": "PUBLIC_SERVICE_URL is not configured."}), 500
+
+    expected_audience = f"{public_service_url}/tasks/api/tasks/send-email"
 
     try:
         claims = _verify_task_oidc_token(token=token, audience=expected_audience)
