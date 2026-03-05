@@ -170,21 +170,15 @@ def _legacy_status_label(status: ShipmentStatus | str | None) -> str:
 
 def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
     # 1. Identify specific legs
-    leg1 = next((l for l in shipment.legs if l.leg_sequence == 1), None)
-    leg3 = next((l for l in shipment.legs if l.leg_sequence == 3), None)
-
-    # 2. Logic: Show Pickup Driver until they finish Leg 1, then show Delivery Driver
     display_driver_id = None
-    if leg1 and leg1.status != ShipmentLegStatus.COMPLETED:
-        display_driver_id = leg1.assigned_driver_id
-    elif leg3:
-        display_driver_id = leg3.assigned_driver_id
-    else:
-        # Fallback to current active leg pointer if sequence 1 and 3 aren't found
-        active_leg = _shipment_current_leg(shipment)
-        display_driver_id = active_leg.assigned_driver_id if active_leg else None
-
     active_leg = _shipment_current_leg(shipment)
+    if active_leg:
+        if active_leg.leg_sequence == 2:
+            leg3 = next((l for l in shipment.legs if l.leg_sequence == 3), None)
+            display_driver_id = leg3.assigned_driver_id if leg3 else None
+        else:
+            display_driver_id = active_leg.assigned_driver_id
+
     current_leg_type = None
     current_leg_status = None
     if active_leg:
@@ -767,6 +761,7 @@ def clear_load_board():
     payload = request.get_json(silent=True) or {}
     target_hwb = (payload.get("hwb_number") or "").strip()
     resolution = (payload.get("resolution") or "CANCELLED").strip().upper()
+    hard_delete = bool(payload.get("hard_delete", False))
 
     if not target_hwb:
         return jsonify({"error": "Target HWB or 'ALL' required."}), 400
@@ -793,33 +788,44 @@ def clear_load_board():
             if target_hwb == "ALL":
                 legacy_loads = LoadBoard.query.filter(LoadBoard.status.notin_(["Delivered", "Cancelled"])).all()
                 for load in legacy_loads:
-                    load.status = "Cancelled"
-                    log_clearance(load.hwb_number, "CANCELLED")
+                    if hard_delete:
+                        db.session.delete(load)
+                    else:
+                        load.status = "Cancelled"
+                        log_clearance(load.hwb_number, "CANCELLED")
                     cleared_count += 1
 
                 shipments = Shipment.query.filter(
                     Shipment.overall_status.notin_([ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED])
                 ).all()
                 for shipment in shipments:
-                    shipment.overall_status = ShipmentStatus.CANCELLED
-                    log_clearance(shipment.hwb_number, "CANCELLED")
+                    if hard_delete:
+                        db.session.delete(shipment)
+                    else:
+                        shipment.overall_status = ShipmentStatus.CANCELLED
+                        log_clearance(shipment.hwb_number, "CANCELLED")
                     cleared_count += 1
             else:
-                mapped_shipment_status = (
-                    ShipmentStatus.DELIVERED if resolution == "COMPLETED_3RD_PARTY" else ShipmentStatus.CANCELLED
-                )
-                mapped_legacy_status = "Delivered" if resolution == "COMPLETED_3RD_PARTY" else "Cancelled"
-
                 legacy_load = db.session.get(LoadBoard, target_hwb)
                 if legacy_load and legacy_load.status not in ["Delivered", "Cancelled"]:
-                    legacy_load.status = mapped_legacy_status
-                    log_clearance(legacy_load.hwb_number, resolution)
+                    if hard_delete:
+                        db.session.delete(legacy_load)
+                    else:
+                        mapped_legacy_status = "Delivered" if resolution == "COMPLETED_3RD_PARTY" else "Cancelled"
+                        legacy_load.status = mapped_legacy_status
+                        log_clearance(legacy_load.hwb_number, resolution)
                     cleared_count += 1
 
                 shipment = Shipment.query.filter_by(hwb_number=target_hwb).first()
                 if shipment and shipment.overall_status not in [ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED]:
-                    shipment.overall_status = mapped_shipment_status
-                    log_clearance(shipment.hwb_number, resolution)
+                    if hard_delete:
+                        db.session.delete(shipment)
+                    else:
+                        mapped_shipment_status = (
+                            ShipmentStatus.DELIVERED if resolution == "COMPLETED_3RD_PARTY" else ShipmentStatus.CANCELLED
+                        )
+                        shipment.overall_status = mapped_shipment_status
+                        log_clearance(shipment.hwb_number, resolution)
                     cleared_count += 1
 
         db.session.commit()
@@ -989,8 +995,8 @@ def upload_load_board_csv():
         elif hwb_number:
             seen_hwb_numbers.add(hwb_number)
 
-        first_mile_driver = resolve_driver_id(row.get("P/U Agent name"))
-        last_mile_driver = resolve_driver_id(row.get("DEL agent name"))
+        first_mile_driver = resolve_driver_id(row.get("PU Driver"))
+        last_mile_driver = resolve_driver_id(row.get("DEL Driver"))
 
         if row_issue_list:
             row_errors.append(f"Row {index}: {'; '.join(row_issue_list)}")
@@ -1121,10 +1127,16 @@ def upload_load_board_csv():
                     leg1 = legs_by_sequence[1]
                     leg3 = legs_by_sequence[3]
 
-                    if parsed_row["first_mile_driver_id"] and not leg1.assigned_driver_id:
-                        leg1.assigned_driver_id = parsed_row["first_mile_driver_id"]
-                    if parsed_row["last_mile_driver_id"] and not leg3.assigned_driver_id:
-                        leg3.assigned_driver_id = parsed_row["last_mile_driver_id"]
+                    # Force CSV data to overwrite existing database assignments unconditionally
+                    leg1.assigned_driver_id = parsed_row["first_mile_driver_id"]
+                    leg3.assigned_driver_id = parsed_row["last_mile_driver_id"]
+
+                    # Align leg status with the newly assigned driver state
+                    if leg1.status in {ShipmentLegStatus.PENDING, ShipmentLegStatus.ASSIGNED}:
+                        leg1.status = ShipmentLegStatus.ASSIGNED if leg1.assigned_driver_id else ShipmentLegStatus.PENDING
+
+                    if leg3.status in {ShipmentLegStatus.PENDING, ShipmentLegStatus.ASSIGNED}:
+                        leg3.status = ShipmentLegStatus.ASSIGNED if leg3.assigned_driver_id else ShipmentLegStatus.PENDING
 
                     for leg, desired_state in (
                         (leg1, status_reconciliation["leg1_status"]),

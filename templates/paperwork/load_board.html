@@ -146,10 +146,15 @@
 <script>
 function executeClear(target) {
     let resolution = "CANCELLED";
+    let hardDelete = false;
 
     if (target === 'ALL') {
-        const userConfirmation = prompt('WARNING: This drops ALL active shipments.\nType "CLEAR ALL" to confirm:');
-        if (userConfirmation !== 'CLEAR ALL') {
+        const userConfirmation = prompt('WARNING: This affects ALL active shipments.\nType "CLEAR ALL" to cancel them.\nType "HARD DELETE" to permanently erase them from the database:');
+        if (userConfirmation === 'CLEAR ALL') {
+            hardDelete = false;
+        } else if (userConfirmation === 'HARD DELETE') {
+            hardDelete = true;
+        } else {
             alert('Action aborted.');
             return;
         }
@@ -157,13 +162,16 @@ function executeClear(target) {
         const userConfirmation = prompt(
             `Resolve HWB ${target}:\n` +
             'Type "CANCEL" to mark as cancelled.\n' +
-            'Type "3RD PARTY" if completed by an external carrier.'
+            'Type "3RD PARTY" if completed by an external carrier.\n' +
+            'Type "HARD DELETE" to permanently erase this record.'
         );
 
         if (userConfirmation === 'CANCEL') {
             resolution = 'CANCELLED';
         } else if (userConfirmation === '3RD PARTY') {
             resolution = 'COMPLETED_3RD_PARTY';
+        } else if (userConfirmation === 'HARD DELETE') {
+            hardDelete = true;
         } else {
             alert('Action aborted: Invalid confirmation phrase.');
             return;
@@ -178,7 +186,8 @@ function executeClear(target) {
         },
         body: JSON.stringify({
             hwb_number: target,
-            resolution: resolution
+            resolution: resolution,
+            hard_delete: hardDelete
         })
     })
     .then(response => response.json())
