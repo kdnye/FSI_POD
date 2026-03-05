@@ -4,62 +4,46 @@
 {% block content %}
 <section class="fsi-card">
     <h1 class="fsi-display">Help & Documentation</h1>
-    <p>Your current role: <strong>{{ role or 'EMPLOYEE' }}</strong>.</p>
+    <p>Use this guide to complete each shipment stage with the required information.</p>
 
     <section style="margin-top: 1.25rem;">
-        <h2>General User / Driver Instructions</h2>
+        <h2>Event Stages & Required Fields</h2>
 
-        <h3>How to Submit a POD</h3>
-        <ul>
-            <li>Open <strong>New POD</strong> from the top navigation.</li>
-            <li>Scan the HWB barcode or type the number manually.</li>
-            <li>Capture the delivery photo and collect the consignee signature on the digital canvas.</li>
-            <li>If you scan an unassigned load, an off-sheet warning will appear and ask for confirmation before reassignment.</li>
-        </ul>
+        <article style="margin-top: 1rem;">
+            <h3>1) Shipper Pickup</h3>
+            <p><strong>Required:</strong> HWB Number, Pickup Photo, Signature, Pickup Timestamp.</p>
+            <p><strong>Optional:</strong> Notes.</p>
+        </article>
 
-        <h3>Batch Uploads</h3>
-        <p>
-            Use the <strong>Upload</strong> tab to submit up to 100 scanned documents in one batch.
-            Files are sent to Couchdrop for processing.
-        </p>
+        <article style="margin-top: 1rem;">
+            <h3>2) Origin Airport Drop</h3>
+            <p><strong>Required:</strong> HWB Number, Airport Drop Photo, Signature, Drop Timestamp.</p>
+            <p><strong>Optional:</strong> Notes.</p>
+        </article>
+
+        <article style="margin-top: 1rem;">
+            <h3>3) Destination Airport Pickup</h3>
+            <p><strong>Required:</strong> HWB Number, Airport Pickup Photo, Signature, Pickup Timestamp.</p>
+            <p><strong>Optional:</strong> Notes.</p>
+        </article>
+
+        <article style="margin-top: 1rem;">
+            <h3>4) Consignee Drop</h3>
+            <p><strong>Required:</strong> HWB Number, Delivery Photo, Signature, Delivery Timestamp.</p>
+            <p><strong>Optional:</strong> Notes.</p>
+        </article>
     </section>
 
-    {% if is_ops %}
     <section style="margin-top: 1.25rem;">
-        <h2>Operations Instructions</h2>
-
-        <h3>Load Board Management</h3>
-        <p>Open <strong>Active Load Board</strong> to view current company shipments and status.</p>
-
-        <h3>CSV Uploads</h3>
-        <p>Ops/Admin CSV uploads require the following headers:</p>
-        <p><code>mawb_number, hwb_number, shipper_address, consignee_address, origin_airport, destination_airport</code></p>
-        <p>Use the upload tool to import rows and assign them into the live load workflow.</p>
-
-        <h3>Live Dashboard</h3>
-        <p>Use the Live Ops Dashboard to monitor real-time sync and shipment activity.</p>
-
-        <h3>POD Export</h3>
-        <p>Download the global POD history CSV from the POD History export section.</p>
-    </section>
-    {% endif %}
-
-    {% if is_admin %}
-    <section style="margin-top: 1.25rem;">
-        <h2>Administrator Instructions</h2>
-
-        <h3>User Management</h3>
+        <h2>Off-Sheet Freight Reassignment</h2>
         <p>
-            In the Admin Dashboard (<code>/account/admin/users</code>), approve pending employees,
-            assign roles (<code>SUPERVISOR</code>, <code>FINANCE</code>, <code>ADMIN</code>),
-            and toggle Ops membership for qualified users.
+            If a scanned HWB is currently assigned to another driver/load, the system will show an
+            <strong>off-sheet freight warning</strong> before allowing any status event to be submitted.
         </p>
-
-        <h3>System Overrides</h3>
         <p>
-            Use <strong>Resolve</strong> controls to force-cancel loads or mark loads complete when a third-party carrier finishes delivery.
+            Continuing confirms you are reassigning that freight to your active workflow. This warning behavior is
+            designed to prevent accidental load theft, duplicate handling, or incorrect custody updates.
         </p>
     </section>
-    {% endif %}
 </section>
 {% endblock %}
