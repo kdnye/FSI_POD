@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
-from app.services.gcs import generate_signed_url
+from app.services.gcs import build_media_access_url
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
 from models import Shipment, User
 
@@ -143,7 +143,7 @@ def send_email_task() -> tuple[dict[str, str], int]:
     def _build_media_url(blob_name: object) -> str | None:
         if not isinstance(blob_name, str) or not blob_name.strip():
             return None
-        return generate_signed_url(blob_name)
+        return build_media_access_url(blob_name)
 
     timestamp = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %I:%M %p MST")
 
