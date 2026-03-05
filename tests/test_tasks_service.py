@@ -31,6 +31,8 @@ def test_enqueue_email_task_creates_cloud_task_with_blob_names(monkeypatch, app)
                 shipment_id=100,
                 action_type="SHIPPER_PICKUP",
                 actor_user_id=5,
+                driver_email="driver@example.com",
+                driver_name="Driver Name",
                 hwb_number="HWB100",
                 location_name="PHX",
                 photo_blob_name="pods/photo-blob.jpg",
@@ -50,6 +52,8 @@ def test_enqueue_email_task_creates_cloud_task_with_blob_names(monkeypatch, app)
     }
     assert body["photo_blob_name"] == "pods/photo-blob.jpg"
     assert body["signature_blob_name"] == "pods/signature-blob.jpg"
+    assert body["driver_email"] == "driver@example.com"
+    assert body["driver_name"] == "Driver Name"
     assert "photo_url" not in body
     assert "signature_url" not in body
 
