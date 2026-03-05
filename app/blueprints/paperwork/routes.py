@@ -622,9 +622,10 @@ def active_load_board():
     full_board_access = is_ops_or_admin_user()
     show_delivered = request.args.get("show_delivered", "0") == "1"
     show_cancelled = request.args.get("show_cancelled", "0") == "1"
+    # Force query_loads to return all delivered items so the 4-hour logic below can evaluate them.
     loads = query_loads(
         full_board_access,
-        include_delivered=show_delivered,
+        include_delivered=True,
         include_cancelled=show_cancelled,
     )
 
