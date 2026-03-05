@@ -28,6 +28,7 @@
             {{ 'Hide Cancelled' if show_cancelled else 'Show Cancelled' }}
         </a>
     </div>
+    {% endif %}
     <div class="fsi-load-board-wrap fsi-table-wrap">
         <table class="fsi-table fsi-load-board-table">
             <thead>
@@ -51,6 +52,7 @@
                 </tr>
             </thead>
             <tbody>
+                {% if loads %}
                 {% for load in loads %}
                 <tr>
                     {% if full_board_access %}
@@ -126,12 +128,16 @@
                     <td>{{ load.pod_recipient_name or '—' }}</td>
                 </tr>
                 {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="{% if full_board_access %}11{% else %}10{% endif %}">
+                        {{ "No active loads found." if full_board_access else "No active loads assigned to you." }}
+                    </td>
+                </tr>
+                {% endif %}
             </tbody>
         </table>
     </div>
-    {% else %}
-    <p>{{ "No active loads found." if full_board_access else "No active loads assigned to you." }}</p>
-    {% endif %}
 
     {% if full_board_access %}
     <div style="display: flex; gap: 1rem; margin-top: 2rem; align-items: stretch;">
@@ -155,8 +161,8 @@
     {% endif %}
 </section>
 
-{% if full_board_access %}
 <script>
+{% if full_board_access %}
 function executeClear(target) {
     let resolution = "CANCELLED";
     let hardDelete = false;
@@ -242,6 +248,7 @@ function reassignDriver(target, driverId) {
         location.reload();
     });
 }
+{% endif %}
 
 // --- Background Auto-Refresh Logic ---
 const REFRESH_INTERVAL_MS = 30000; // 30 seconds
@@ -275,6 +282,8 @@ async function fetchLatestBoard() {
             if (!isEditing) {
                 currentTbody.innerHTML = newTbody.innerHTML;
             }
+        } else {
+            console.warn('Refresh: Table body not found in current page or fetch response.');
         }
     } catch (error) {
         console.error('Background refresh failed:', error);
@@ -286,5 +295,4 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchLatestBoard, REFRESH_INTERVAL_MS);
 });
 </script>
-{% endif %}
 {% endblock %}
