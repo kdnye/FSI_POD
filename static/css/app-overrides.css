@@ -65,13 +65,26 @@
   width: min(100%, 34rem);
 }
 
+/* Update existing Load Board container */
 .fsi-container--load-board {
-  max-width: min(100%, 1680px);
+  max-width: 100%; /* Allow full width */
   padding-inline: clamp(0.75rem, 1.5vw, 1.5rem);
 }
 
 .fsi-card--load-board {
-  width: min(100%, 100vw - 2rem, 120rem);
+  width: 100%; /* Take up available space */
+  overflow-x: auto; /* Ensure horizontal scrolling on the card itself if needed */
+}
+
+/* Add a new container class for POD History */
+.fsi-container--fluid {
+  max-width: 100%;
+  padding-inline: clamp(0.75rem, 1.5vw, 1.5rem);
+}
+
+.fsi-card--fluid {
+    width: 100%;
+    overflow-x: auto;
 }
 
 .fsi-form-grid label {
