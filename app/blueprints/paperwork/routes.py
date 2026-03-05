@@ -406,7 +406,7 @@ def submit_pod(
             hwb_number=target_hwb_number,
             delivery_photo=photo_uri,
             signature_image=sig_uri,
-            recipient_name=recipient_name or "",
+            recipient_name=recipient_name if recipient_name else None,
             driver_id=g.current_user.id,
             action_type=canonical_action,
             off_sheet_confirmed=off_sheet_confirmed,
