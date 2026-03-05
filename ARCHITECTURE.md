@@ -1,32 +1,105 @@
-# FSI Application Architecture
+# FSI POD Application Architecture
 
-## Overview
-The FSI Application is a monolithic Python web application hosted on Google Cloud Run. It handles employee paperwork batching and real-time Proof of Delivery (POD) event capture. The architecture prioritizes lightweight, browser-native capabilities over compiled mobile applications.
+## System Overview
+FSI POD is a monolithic Flask application deployed on Google Cloud Run and served by synchronous Gunicorn workers. The platform supports Proof of Delivery (POD) capture, shipment progression, and operational visibility through short-polling dashboard updates.
 
-## Core Technology Stack
-* **Runtime:** Python 3.11+, Gunicorn (WSGI).
-* **Framework:** Flask.
-* **Database:** PostgreSQL (via SQLAlchemy ORM).
-* **Hosting:** Google Cloud Run (Managed).
-* **Object Storage:** Google Cloud Storage (GCS) for transactional media; Couchdrop for legacy batch documents.
+Core design constraints:
+- Browser-native mobile workflows using HTML5 device APIs (camera, geolocation, canvas).
+- API-first server routes returning JSON payloads for dashboard and workflow actions.
+- Direct object upload streaming from request file objects to cloud storage.
+- UTC persistence in PostgreSQL with application-layer presentation in `America/Phoenix`.
 
-## System Components
+Primary runtime components:
+- Flask web app (routing, auth, business logic).
+- PostgreSQL (transactional system of record).
+- Google Cloud Storage for POD media artifacts.
+- Workflow orchestration logic in `app/services/shipment_workflow.py`.
 
-### 1. Frontend Data Capture (Mobile Web)
-* **QR Scanning:** Uses `html5-qrcode` to decode BOL/Reference IDs client-side.
-* **Geolocation:** Uses HTML5 `navigator.geolocation` API.
-* **Photo Capture:** Uses standard `<input type="file" capture="environment">` to trigger native device cameras.
-* **Signature Capture:** Uses `signature_pad` on an HTML5 `<canvas>`, serialized to Base64 PNGs prior to submission.
+## Database Schema Blueprint
+The POD workflow is modeled using normalized shipment entities and transition history.
 
-### 2. Real-Time Operations Dashboard
-* **Methodology:** Client-side asynchronous polling (`fetch()`) at 10-second intervals.
-* **Rationale:** Bypasses the need for WebSockets/Server-Sent Events (SSE) to maintain compatibility with standard threaded Gunicorn workers and Cloud Run connection timeouts.
+### Core Tables
 
-### 3. Data Models
-* `User`: RBAC-enabled employee accounts (EMPLOYEE, SUPERVISOR, FINANCE, ADMIN).
-* `PODEvent`: Transactional ledger of discrete pickup/delivery actions. Stores GCS URIs, GPS coordinates, and handles UTC-to-Arizona (MST) timezone translation natively.
-* `ExpectedDelivery`: Groups reference IDs by batch/route to drive the active operations dashboard.
+| Table | Purpose | Field Examples |
+|---|---|---|
+| `shipments` | Root shipment record and customer-facing identity. | `id`, `shipment_number`, `shipper_name`, `consignee_name`, `created_at_utc` |
+| `shipment_legs` | Segment-level execution records for pickup, linehaul, and delivery activities. | `id`, `shipment_id`, `leg_type`, `status`, `assigned_driver_id`, `planned_departure_utc`, `actual_arrival_utc` |
+| `pod_records` | Immutable proof artifacts captured at completion checkpoints. | `id`, `shipment_leg_id`, `event_type`, `signed_by`, `signature_image_uri`, `photo_uri`, `gps_latitude`, `gps_longitude`, `captured_at_utc` |
+| `shipment_leg_transitions` | Auditable state transition log for each leg with actor and reason. | `id`, `shipment_leg_id`, `from_state`, `to_state`, `transition_reason`, `changed_by_user_id`, `changed_at_utc` |
 
-### 4. Storage Integration
-* **Transactional (POD):** Direct stream to GCS using `google-cloud-storage`. Authenticates implicitly via the Cloud Run default service account IAM role (`roles/storage.objectAdmin`).
-* **Batch (Legacy):** Streams multipart form data to Couchdrop via API token.
+### Relationship Notes
+- `shipments` 1:N `shipment_legs`
+- `shipment_legs` 1:N `pod_records`
+- `shipment_legs` 1:N `shipment_leg_transitions`
+
+### Time & Consistency Rules
+- All timestamp columns are stored as timezone-aware UTC values.
+- UI and reports convert to `America/Phoenix` at read-time.
+- `shipment_leg_transitions` is append-only for traceability.
+
+## Workflow Engine & State Machine
+Shipment progression is enforced by the workflow service in `app/services/shipment_workflow.py`.
+
+### Canonical Leg States
+- `created`
+- `dispatched`
+- `in_transit`
+- `arrived`
+- `pod_captured`
+- `completed`
+- `exception`
+- `cancelled`
+
+### Allowed State Transitions
+- `created` -> `dispatched`
+- `dispatched` -> `in_transit`
+- `in_transit` -> `arrived`
+- `arrived` -> `pod_captured`
+- `pod_captured` -> `completed`
+- `created` -> `cancelled`
+- `dispatched` -> `cancelled`
+- `in_transit` -> `exception`
+- `arrived` -> `exception`
+- `exception` -> `in_transit`
+- `exception` -> `cancelled`
+
+### Transition Processing Contract
+1. Validate requested `from_state` and `to_state` against allowed transitions.
+2. Apply fail-fast guardrails (role checks, required POD artifacts, shipment leg ownership).
+3. Persist leg status update in `shipment_legs`.
+4. Append transition event to `shipment_leg_transitions` in the same transaction.
+5. If transition reaches POD checkpoint, create corresponding `pod_records` entry.
+
+## Integration Specifications
+
+### Device & Browser Integration
+- Camera capture via native file input with direct image upload.
+- Signature capture via HTML5 canvas payload.
+- Geolocation capture through browser geolocation API with explicit user permission.
+
+### API Behavior
+- JSON request/response contracts for shipment lookup, state transition, and dashboard refresh.
+- Short-polling for operational status updates from browser clients.
+- Deterministic HTTP error codes for invalid transitions and authorization failures.
+
+### Storage Integration
+- Upload streams are read from request file objects and sent directly to object storage.
+- No temporary filesystem staging required for POD photos/signatures.
+- Stored media URIs are persisted on `pod_records`.
+
+## Deployment Specs
+
+### Runtime Topology
+- Single Flask service container running on Cloud Run.
+- Gunicorn synchronous workers for predictable request handling.
+- Horizontal autoscaling through Cloud Run instance scaling.
+
+### Configuration & Security
+- Application uses runtime-injected environment configuration.
+- Cloud-native identity (Application Default Credentials) for storage access.
+- Role-based access control enforced at route and service boundaries.
+
+### Operational Requirements
+- Health endpoints for readiness/liveness checks.
+- Structured logs including shipment and leg identifiers for traceability.
+- Database migrations applied before rollout when schema changes affect `shipment_legs`, `pod_records`, or `shipment_leg_transitions`.
