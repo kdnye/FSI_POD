@@ -435,6 +435,21 @@
   .pod-signature-canvas {
     height: clamp(120px, 22vh, 165px);
   }
+  /* Add this inside your @media (max-width: 768px) block */
+  .fsi-navbar .fsi-container {
+    flex-wrap: nowrap; /* Prevent stacking */
+    justify-content: space-between;
+  }
+  
+  .fsi-brand {
+    font-size: 1.1rem; /* Scale down brand text */
+    flex: 0 1 auto;
+  }
+  
+  .fsi-nav-actions {
+    width: auto;
+    justify-content: flex-end;
+  }
 }
 
 @media (max-width: 560px) {
