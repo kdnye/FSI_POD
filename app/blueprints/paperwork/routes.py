@@ -187,20 +187,23 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         current_leg_type = str(leg_type_value) if leg_type_value is not None else None
         current_leg_status = str(leg_status_value) if leg_status_value is not None else None
 
-    # UI Stage Labels
+    # UI Stage Labels - This explicitly maps the workflow state to the CSS badges
     stage_label = "Awaiting Pickup"
     stage_class = "status-awaiting-pickup"
 
-    if shipment.overall_status == ShipmentStatus.IN_PROGRESS and shipment.current_leg_index == 1:
+    # Evaluate using the enum names directly from the workflow engine
+    overall = getattr(shipment.overall_status, "name", shipment.overall_status)
+    
+    if overall == "IN_PROGRESS" and shipment.current_leg_index == 1:
         stage_label = "En Route to Origin Airport"
         stage_class = "status-in-progress"
-    elif shipment.overall_status == ShipmentStatus.PICKED_UP:
+    elif overall == "PICKED_UP" or (overall == "IN_PROGRESS" and shipment.current_leg_index == 2):
         stage_label = "At Origin Airport (In Transit)"
         stage_class = "status-picked-up"
-    elif shipment.overall_status == ShipmentStatus.IN_PROGRESS and shipment.current_leg_index == 3:
+    elif overall == "IN_PROGRESS" and shipment.current_leg_index == 3:
         stage_label = "Out for Delivery"
         stage_class = "status-in-progress"
-    elif shipment.overall_status == ShipmentStatus.DELIVERED:
+    elif overall == "DELIVERED":
         stage_label = "Delivered"
         stage_class = "status-delivered"
 
@@ -211,7 +214,7 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         contact_name="System",
         phone="N/A",
         assigned_driver=display_driver_id,
-        status=_legacy_status_label(shipment.overall_status),
+        status=stage_label, # Pass the resolved label here
         shipment=shipment,
         current_leg_type=current_leg_type,
         current_leg_status=current_leg_status,
