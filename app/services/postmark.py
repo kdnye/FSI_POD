@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from email.utils import parseaddr
 
+import base64
+import os
+
 import requests
 from flask import current_app
 
-from app.services.gcs import build_media_access_url
 from models import NotificationSettings
 
 POSTMARK_EMAIL_ENDPOINT = "https://api.postmarkapp.com/email/withTemplate"
@@ -22,6 +24,36 @@ _ACTION_TO_TEMPLATE = {
     "CONSIGNEE_DROP": "pod-delivery-notification",
 }
 ALLOWED_SHIPMENT_ALERT_ACTIONS = frozenset(_ACTION_TO_SETTING)
+
+
+def _create_inline_attachment(blob_name: str | None) -> dict | None:
+    if not blob_name or str(blob_name).startswith("http"):
+        return None
+
+    clean_blob = str(blob_name).replace("gs://fsi-pod/", "").replace("POD/", "").lstrip("/")
+    file_path = os.path.join("/POD", clean_blob)
+
+    if not os.path.exists(file_path):
+        current_app.logger.warning("Attachment bypassed: Local file not found at %s", file_path)
+        return None
+
+    try:
+        with open(file_path, "rb") as f:
+            b64_content = base64.b64encode(f.read()).decode("utf-8")
+
+        filename = os.path.basename(file_path)
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+        content_type = "image/png" if ext == "png" else "image/jpeg"
+
+        return {
+            "Name": filename,
+            "Content": b64_content,
+            "ContentType": content_type,
+            "ContentID": f"cid:{filename}",
+        }
+    except Exception as e:
+        current_app.logger.error("Attachment encoding failed for %s: %s", file_path, e)
+        return None
 
 
 def _is_valid_email(email: str | None) -> bool:
@@ -131,14 +163,18 @@ def send_shipment_alert(
         "driver_name": driver_name or "N/A",
     }
 
-    if action == "CONSIGNEE_DROP":
-        resolved_photo_url = build_media_access_url(photo_url)
-        resolved_signature_url = build_media_access_url(signature_url)
+    attachments = []
 
-        if resolved_photo_url:
-            template_model["photo_url"] = resolved_photo_url
-        if resolved_signature_url:
-            template_model["signature_url"] = resolved_signature_url
+    if action == "CONSIGNEE_DROP":
+        photo_att = _create_inline_attachment(photo_url)
+        if photo_att:
+            attachments.append(photo_att)
+            template_model["photo_url"] = photo_att["ContentID"]
+
+        sig_att = _create_inline_attachment(signature_url)
+        if sig_att:
+            attachments.append(sig_att)
+            template_model["signature_url"] = sig_att["ContentID"]
 
     payload = {
         "From": from_email,
@@ -147,6 +183,9 @@ def send_shipment_alert(
         "TemplateModel": template_model,
         "MessageStream": "pod",
     }
+
+    if attachments:
+        payload["Attachments"] = attachments
 
     try:
         response = requests.post(
