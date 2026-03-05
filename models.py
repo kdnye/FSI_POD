@@ -100,6 +100,7 @@ class User(db.Model):
     )
     employee_approved: Mapped[bool] = db.Column(Boolean, nullable=False, default=False)
     is_ops: Mapped[bool] = db.Column(Boolean, nullable=False, default=False)
+    is_driver: Mapped[bool] = db.Column(Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

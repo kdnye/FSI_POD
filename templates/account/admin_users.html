@@ -16,6 +16,7 @@
         <th>Approved</th>
         <th>Active</th>
         <th>Ops</th>
+        <th>Driver</th>
         <th>Save</th>
       </tr>
     </thead>
@@ -50,6 +51,9 @@
           </td>
           <td>
             <input type="checkbox" name="is_ops" {% if user.is_ops %}checked{% endif %}>
+          </td>
+          <td>
+            <input type="checkbox" name="is_driver" {% if user.is_driver %}checked{% endif %}>
           </td>
           <td><button type="submit" class="fsi-primary-btn">Update</button></td>
         </form>

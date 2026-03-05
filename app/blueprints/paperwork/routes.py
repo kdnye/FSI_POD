@@ -697,7 +697,7 @@ def active_load_board():
 
     available_drivers = []
     if full_board_access:
-        available_drivers = User.query.filter_by(is_active=True).order_by(User.name.asc(), User.email.asc()).all()
+        available_drivers = User.query.filter_by(is_active=True, is_driver=True).order_by(User.name.asc(), User.email.asc()).all()
 
     return render_template(
         "paperwork/load_board.html",
@@ -877,7 +877,7 @@ def upload_load_board_csv():
         return name_value
 
     # Index active drivers by name and email for faster lookup
-    all_drivers = User.query.filter_by(is_active=True).all()
+    all_drivers = User.query.filter_by(is_active=True, is_driver=True).all()
     driver_map: dict[str, int] = {}
     for driver in all_drivers:
         # Map by standard name
