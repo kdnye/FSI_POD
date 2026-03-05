@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, current_app, Response, send_from_directory
+from flask import Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, send_from_directory
 import csv
 import base64
 import re
@@ -7,7 +7,6 @@ from io import BytesIO, StringIO
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from sqlalchemy import or_
 from werkzeug.datastructures import FileStorage
 
 from app import db
@@ -18,7 +17,6 @@ from app.services.gcs import GCSService
 from app.services.shipment_workflow import ShipmentTransitionError, apply_pod_transition, normalize_pod_action
 from models import ExpectedDelivery
 from models import (
-    LoadBoard,
     PODRecord,
     Shipment,
     ShipmentGroup,
@@ -145,10 +143,6 @@ class LegacyLoadView:
     stage_class: str = "status-awaiting-pickup"
 
 
-def use_shipments_for_load_board() -> bool:
-    return bool(current_app.config.get("LOAD_BOARD_USE_SHIPMENTS", False))
-
-
 def _shipment_current_leg(shipment: Shipment) -> ShipmentLeg | None:
     for leg in shipment.legs:
         if leg.leg_sequence == shipment.current_leg_index:
@@ -222,23 +216,15 @@ def load_view_from_shipment(shipment: Shipment) -> LegacyLoadView:
         stage_class=stage_class,
     )
 
-def get_load_entry(hwb_number: str) -> LegacyLoadView | LoadBoard | None:
+def get_load_entry(hwb_number: str) -> LegacyLoadView | None:
     entries = get_load_entries_by_identifier(hwb_number)
     return entries[0] if entries else None
 
 
-def get_load_entries_by_identifier(identifier: str) -> list[LegacyLoadView | LoadBoard]:
+def get_load_entries_by_identifier(identifier: str) -> list[LegacyLoadView]:
     normalized = (identifier or "").strip()
     if not normalized:
         return []
-
-    if not use_shipments_for_load_board():
-        return (
-            LoadBoard.query
-            .filter(or_(LoadBoard.hwb_number == normalized, LoadBoard.mawb_number == normalized))
-            .order_by(LoadBoard.hwb_number.asc())
-            .all()
-        )
 
     shipment = Shipment.query.filter_by(hwb_number=normalized).first()
     if shipment:
@@ -255,7 +241,7 @@ def get_load_entries_by_identifier(identifier: str) -> list[LegacyLoadView | Loa
 
 
 def set_load_status(
-    load_entry: LegacyLoadView | LoadBoard,
+    load_entry: LegacyLoadView,
     action_type: str,
     latitude: str | None = None,
     longitude: str | None = None,
@@ -263,20 +249,9 @@ def set_load_status(
     signature_blob_name: str | None = None,
 ) -> None:
     canonical_action = normalize_pod_action(action_type)
-    # Align the legacy status updates to explicitly trigger the correct UI stages.
-    next_status_by_action = {
-        "SHIPPER_PICKUP": "In Progress",
-        "ORIGIN_AIRPORT_DROP": "Picked Up",
-        "DEST_AIRPORT_PICKUP": "Out for Delivery",
-        "CONSIGNEE_DROP": "Delivered",
-    }
-    next_status = next_status_by_action[canonical_action]
-    if isinstance(load_entry, LoadBoard):
-        load_entry.status = next_status
-        return
-
     if not load_entry.shipment:
         return
+
     apply_pod_transition(
         shipment=load_entry.shipment,
         action_type=canonical_action,
@@ -288,11 +263,7 @@ def set_load_status(
     )
 
 
-def assign_load_to_current_driver(load_entry: LegacyLoadView | LoadBoard) -> None:
-    if isinstance(load_entry, LoadBoard):
-        load_entry.assigned_driver = g.current_user.id
-        return
-
+def assign_load_to_current_driver(load_entry: LegacyLoadView) -> None:
     if not load_entry.shipment:
         return
 
@@ -303,57 +274,29 @@ def assign_load_to_current_driver(load_entry: LegacyLoadView | LoadBoard) -> Non
             active_leg.status = ShipmentLegStatus.ASSIGNED
 
 
-def query_loads(full_board_access: bool, include_delivered: bool = True, include_cancelled: bool = False):
-    if not use_shipments_for_load_board():
-        load_query = LoadBoard.query
-        if not full_board_access:
-            load_query = load_query.filter_by(assigned_driver=g.current_user.id)
-        if not include_cancelled:
-            load_query = load_query.filter(LoadBoard.status != "Cancelled")
-
-        legacy_loads = load_query.order_by(LoadBoard.hwb_number.asc()).all()
-
-        # Fetch matching shipments to inject rich leg data into the legacy board
-        hwbs = [lb.hwb_number for lb in legacy_loads]
-        shipments = {s.hwb_number: s for s in Shipment.query.filter(Shipment.hwb_number.in_(hwbs)).all()}
-
-        views = []
-        for lb in legacy_loads:
-            shipment = shipments.get(lb.hwb_number)
-            if shipment:
-                # Inherit rich leg data, custom labels, and accurate driver handoffs
-                views.append(load_view_from_shipment(shipment))
-            else:
-                # Fallback for old records without a shipment workflow entry
-                views.append(LegacyLoadView(
-                    hwb_number=lb.hwb_number,
-                    shipper=lb.shipper,
-                    consignee=lb.consignee,
-                    contact_name=lb.contact_name,
-                    phone=lb.phone,
-                    assigned_driver=lb.assigned_driver,
-                    status=lb.status,
-                    stage_label=lb.status,
-                    stage_class=""
-                ))
-        return views
-
-    # Native shipment path
+def query_loads(full_board_access: bool, include_delivered: bool = True, include_cancelled: bool = False) -> list[LegacyLoadView]:
     shipment_query = Shipment.query.order_by(Shipment.hwb_number.asc())
     if not include_cancelled:
         shipment_query = shipment_query.filter(Shipment.overall_status != ShipmentStatus.CANCELLED)
+
     shipments = shipment_query.all()
     views = []
+
     for shipment in shipments:
         view = load_view_from_shipment(shipment)
+        # Apply delivery visibility filter
+        if not include_delivered and view.status == "Delivered":
+            continue
+        # Apply driver assignment filter
         if full_board_access or view.assigned_driver == g.current_user.id:
             views.append(view)
+
     return views
 
 
 def resolve_pod_shipment_context(
     hwb_number: str,
-    load_board_entry: LegacyLoadView | LoadBoard | None,
+    load_board_entry: LegacyLoadView | None,
 ) -> tuple[int | None, int | None, int | None, str | None, str]:
     """Resolve shipment/leg metadata for POD history rows when available."""
     shipment = None
@@ -362,7 +305,7 @@ def resolve_pod_shipment_context(
     if load_board_entry:
         target_hwb_number = load_board_entry.hwb_number
 
-    if isinstance(load_board_entry, LegacyLoadView) and load_board_entry.shipment:
+    if load_board_entry and load_board_entry.shipment:
         shipment = load_board_entry.shipment
     elif target_hwb_number:
         shipment = Shipment.query.filter_by(hwb_number=target_hwb_number).first()
@@ -790,15 +733,6 @@ def clear_load_board():
     try:
         with db.session.begin_nested():
             if target_hwb == "ALL":
-                legacy_loads = LoadBoard.query.filter(LoadBoard.status.notin_(["Delivered", "Cancelled"])).all()
-                for load in legacy_loads:
-                    if hard_delete:
-                        db.session.delete(load)
-                    else:
-                        load.status = "Cancelled"
-                        log_clearance(load.hwb_number, "CANCELLED")
-                    cleared_count += 1
-
                 shipments = Shipment.query.filter(
                     Shipment.overall_status.notin_([ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED])
                 ).all()
@@ -810,16 +744,6 @@ def clear_load_board():
                         log_clearance(shipment.hwb_number, "CANCELLED")
                     cleared_count += 1
             else:
-                legacy_load = db.session.get(LoadBoard, target_hwb)
-                if legacy_load and legacy_load.status not in ["Delivered", "Cancelled"]:
-                    if hard_delete:
-                        db.session.delete(legacy_load)
-                    else:
-                        mapped_legacy_status = "Delivered" if resolution == "COMPLETED_3RD_PARTY" else "Cancelled"
-                        legacy_load.status = mapped_legacy_status
-                        log_clearance(legacy_load.hwb_number, resolution)
-                    cleared_count += 1
-
                 shipment = Shipment.query.filter_by(hwb_number=target_hwb).first()
                 if shipment and shipment.overall_status not in [ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED]:
                     if hard_delete:
@@ -1165,20 +1089,6 @@ def upload_load_board_csv():
 
                     # Guardrail: downstream POD workflow transitions validate leg state, not only shipment.overall_status.
                     # Keep this importer leg-first so repeated CSV upserts remain safe and deterministic.
-
-                    if not use_shipments_for_load_board():
-                        entry = db.session.get(LoadBoard, parsed_row["hwb_number"])
-                        if not entry:
-                            entry = LoadBoard(hwb_number=parsed_row["hwb_number"])
-                            db.session.add(entry)
-
-                        entry.shipper = parsed_row["shipper_address"]
-                        entry.consignee = parsed_row["consignee_address"]
-                        entry.mawb_number = parsed_row["mawb_number"]
-                        entry.contact_name = "CSV Import"
-                        entry.phone = "N/A"
-                        entry.assigned_driver = parsed_row["first_mile_driver_id"]
-                        entry.status = parsed_row["status"]
 
                     upserted_count += 1
             db.session.commit()
