@@ -473,3 +473,38 @@
     height: 130px;
   }
 }
+
+/* Help Page Documentation Cards */
+.fsi-help-card {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+    background-color: var(--surface-hover, rgba(128, 128, 128, 0.05));
+}
+.fsi-help-card h4 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+/* Accent Borders */
+.fsi-help-card--pickup { border-left: 4px solid #607d8b; }
+.fsi-help-card--origin { border-left: 4px solid #1976d2; }
+.fsi-help-card--dest { border-left: 4px solid #607d8b; }
+.fsi-help-card--delivery { border-left: 4px solid #388e3c; }
+
+.fsi-help-warning {
+    padding: 1rem;
+    border-left: 4px solid #d32f2f;
+    background-color: rgba(211, 47, 47, 0.1);
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+}
+
+/* Brighten Accents in Dark Mode */
+[data-theme="dark"] .fsi-help-card--origin { border-left-color: #64b5f6; }
+[data-theme="dark"] .fsi-help-card--delivery { border-left-color: #81c784; }
+[data-theme="dark"] .fsi-help-warning { 
+    border-left-color: #ef5350; 
+    background-color: rgba(239, 83, 80, 0.1); 
+}
