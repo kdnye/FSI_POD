@@ -4,46 +4,93 @@
 {% block content %}
 <section class="fsi-card">
     <h1 class="fsi-display">Help & Documentation</h1>
-    <p>Use this guide to complete each shipment stage with the required information.</p>
+    <p>Your current role: <strong>{{ role or 'EMPLOYEE' }}</strong>.</p>
 
     <section style="margin-top: 1.25rem;">
-        <h2>Event Stages & Required Fields</h2>
+        <h2>General User / Driver Instructions</h2>
 
-        <article style="margin-top: 1rem;">
-            <h3>1) Shipper Pickup</h3>
-            <p><strong>Required:</strong> HWB Number, Pickup Photo, Signature, Pickup Timestamp.</p>
-            <p><strong>Optional:</strong> Notes.</p>
-        </article>
+        <h3>POD Event Stages & Requirements</h3>
+        <p>The system dynamically changes what is required based on the Action Type you select. Always start by scanning or typing the HWB.</p>
+        
+        <ul style="list-style-type: none; padding-left: 0;">
+            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                <h4 style="margin-top: 0; color: #2c3e50;">1. Shipper Pickup (Leg 1 Start)</h4>
+                <p><strong>Required:</strong> HWB Number, Action Type.</p>
+                <p><strong>Optional:</strong> Recipient Name, Photo, Signature.</p>
+                <p><em>Action: Scan the freight at the pickup location and submit to mark it "In Progress".</em></p>
+            </li>
 
-        <article style="margin-top: 1rem;">
-            <h3>2) Origin Airport Drop</h3>
-            <p><strong>Required:</strong> HWB Number, Airport Drop Photo, Signature, Drop Timestamp.</p>
-            <p><strong>Optional:</strong> Notes.</p>
-        </article>
+            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #e3f2fd; border-radius: 8px;">
+                <h4 style="margin-top: 0; color: #1565c0;">2. Origin Airport Drop (Leg 1 Complete)</h4>
+                <p><strong>Required:</strong> HWB Number, Action Type, <strong>Recipient Name</strong>.</p>
+                <p><strong>Instructions:</strong> You must enter the <strong>Airline Name</strong> or the Receiving Agent into the "Recipient Name" field. Photos and Signatures are optional.</p>
+            </li>
 
-        <article style="margin-top: 1rem;">
-            <h3>3) Destination Airport Pickup</h3>
-            <p><strong>Required:</strong> HWB Number, Airport Pickup Photo, Signature, Pickup Timestamp.</p>
-            <p><strong>Optional:</strong> Notes.</p>
-        </article>
+            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                <h4 style="margin-top: 0; color: #2c3e50;">3. Destination Airport Pickup (Leg 3 Start)</h4>
+                <p><strong>Required:</strong> HWB Number, Action Type.</p>
+                <p><strong>Optional:</strong> Recipient Name, Photo, Signature.</p>
+                <p><em>Action: Scan the freight when recovering it from the destination airport to begin the final mile.</em></p>
+            </li>
 
-        <article style="margin-top: 1rem;">
-            <h3>4) Consignee Drop</h3>
-            <p><strong>Required:</strong> HWB Number, Delivery Photo, Signature, Delivery Timestamp.</p>
-            <p><strong>Optional:</strong> Notes.</p>
-        </article>
+            <li style="margin-bottom: 1.5rem; padding: 1rem; background: #e8f5e9; border-radius: 8px;">
+                <h4 style="margin-top: 0; color: #2e7d32;">4. Consignee Drop (Final Delivery)</h4>
+                <p><strong>Required:</strong> HWB Number, Action Type, <strong>Recipient Name, POD Photo, AND Consignee Signature</strong>.</p>
+                <p><strong>Instructions:</strong> This is the final milestone. The system will reject the submission if the name, photo, or signature are missing.</p>
+            </li>
+        </ul>
+
+        <h3>Off-Sheet Freight Reassignment</h3>
+        <p style="padding: 1rem; border-left: 4px solid #d32f2f; background: #ffebee;">
+            If a scanned HWB is currently assigned to another driver/load, the system will show an <strong>off-sheet freight warning</strong> before allowing any status event to be submitted.
+            Checking the confirmation box confirms you are reassigning that freight to your active workflow. This warning behavior is designed to prevent accidental load theft, duplicate handling, or incorrect custody updates.
+        </p>
+
+        <h3>Batch Uploads</h3>
+        <p>
+            Use the <strong>Upload</strong> tab to submit up to 100 scanned documents in one batch.
+            Files are sent to Couchdrop for processing.
+        </p>
     </section>
 
+    {% if is_ops %}
     <section style="margin-top: 1.25rem;">
-        <h2>Off-Sheet Freight Reassignment</h2>
+        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 1.25rem;">
+        <h2>Operations Instructions</h2>
+
+        <h3>Load Board Management</h3>
+        <p>Open <strong>Active Load Board</strong> to view current company shipments and status.</p>
+
+        <h3>CSV Uploads</h3>
+        <p>Ops/Admin CSV uploads require the following headers:</p>
+        <p><code>Mawb#, HWB, Org, Dest, PU Driver, DEL Driver</code></p>
+        <p>Use the upload tool to import rows and assign them into the live load workflow.</p>
+
+        <h3>Live Dashboard</h3>
+        <p>Use the Live Ops Dashboard to monitor real-time sync and shipment activity.</p>
+
+        <h3>POD Export</h3>
+        <p>Download the global POD history CSV from the POD History export section.</p>
+    </section>
+    {% endif %}
+
+    {% if is_admin %}
+    <section style="margin-top: 1.25rem;">
+        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 1.25rem;">
+        <h2>Administrator Instructions</h2>
+
+        <h3>User Management</h3>
         <p>
-            If a scanned HWB is currently assigned to another driver/load, the system will show an
-            <strong>off-sheet freight warning</strong> before allowing any status event to be submitted.
+            In the Admin Dashboard (<code>/account/admin/users</code>), approve pending employees,
+            assign roles (<code>SUPERVISOR</code>, <code>FINANCE</code>, <code>ADMIN</code>),
+            and toggle Ops membership for qualified users.
         </p>
+
+        <h3>System Overrides</h3>
         <p>
-            Continuing confirms you are reassigning that freight to your active workflow. This warning behavior is
-            designed to prevent accidental load theft, duplicate handling, or incorrect custody updates.
+            Use <strong>Resolve</strong> controls to force-cancel loads or mark loads complete when a third-party carrier finishes delivery.
         </p>
     </section>
+    {% endif %}
 </section>
 {% endblock %}
