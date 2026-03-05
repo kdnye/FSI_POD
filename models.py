@@ -287,9 +287,9 @@ class PODRecord(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     hwb_number = db.Column(db.String(100), index=True, nullable=True)
-    delivery_photo = db.Column(db.String(512), nullable=False)
-    signature_image = db.Column(db.String(512), nullable=False)
-    recipient_name = db.Column(db.String(120), nullable=False)
+    delivery_photo = db.Column(db.String(512), nullable=True)
+    signature_image = db.Column(db.String(512), nullable=True)
+    recipient_name = db.Column(db.String(120), nullable=True)
     timestamp = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     driver_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     action_type = db.Column(db.String(64), nullable=False)
