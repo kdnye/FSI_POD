@@ -56,12 +56,20 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% set leg_parts = record.leg.split(' / ') %}
+                    {% if record.leg_details %}
+                    {# Split "#300 / Seq 3 / DEST_AIRPORT_TO_CONSIGNEE" #}
+                    {% set leg_parts = record.leg_details.split(' / ') %}
+            
                     {% if leg_parts|length == 3 %}
+                    {# Output: DEST_AIRPORT_TO_CONSIGNEE/Seq 3 #}
                     {{ leg_parts[2] }}/{{ leg_parts[1] }}
                     {% else %}
-                    {{ record.leg }}
+                    {# Fallback for non-standard formats #}
+                    {{ record.leg_details }}
                     {% endif %}
+                       {% else %}
+                           --
+                       {% endif %}
                 </td>
                 <td>{{ record.shipper or 'Manual Entry' }}</td>
                 <td>{{ record.consignee or 'Manual Entry' }}</td>
