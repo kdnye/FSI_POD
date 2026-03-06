@@ -98,11 +98,9 @@ def pod_history_csv_response(records, filename: str) -> Response:
     for record in records:
         timestamp_utc = record.timestamp.astimezone(timezone.utc) if record.timestamp else None
         timestamp_az = record.timestamp.astimezone(ARIZONA_TZ) if record.timestamp else None
-        
-        # Reformat Leg for CSV consistency
-        leg_raw = record.leg_details or ""
-        leg_parts = leg_raw.split(' / ')
-        formatted_leg = f"{leg_parts[2]}/{leg_parts[1]}" if len(leg_parts) == 3 else leg_raw
+
+        # Build the formatted leg string
+        formatted_leg = f"{record.leg_type}/Seq {record.leg_sequence}" if record.leg_type and record.leg_sequence else ""
 
         writer.writerow([
             record.id,
