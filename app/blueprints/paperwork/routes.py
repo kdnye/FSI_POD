@@ -91,15 +91,19 @@ def pod_history_csv_response(records, filename: str) -> Response:
         "latitude",
         "longitude",
         "shipment_id",
-        "leg_id",
-        "leg_sequence",
-        "leg_type",
+        "leg",
         "timestamp_utc",
         "timestamp_az",
     ])
     for record in records:
         timestamp_utc = record.timestamp.astimezone(timezone.utc) if record.timestamp else None
         timestamp_az = record.timestamp.astimezone(ARIZONA_TZ) if record.timestamp else None
+        
+        # Reformat Leg for CSV consistency
+        leg_raw = record.leg_details or ""
+        leg_parts = leg_raw.split(' / ')
+        formatted_leg = f"{leg_parts[2]}/{leg_parts[1]}" if len(leg_parts) == 3 else leg_raw
+
         writer.writerow([
             record.id,
             record.hwb_number or "",
@@ -113,9 +117,7 @@ def pod_history_csv_response(records, filename: str) -> Response:
             record.latitude or "",
             record.longitude or "",
             record.shipment_id or "",
-            record.leg_id or "",
-            record.leg_sequence or "",
-            record.leg_type or "",
+            formatted_leg,
             timestamp_utc.isoformat() if timestamp_utc else "",
             timestamp_az.isoformat() if timestamp_az else "",
         ])
