@@ -103,3 +103,21 @@ Shipment progression is enforced by the workflow service in `app/services/shipme
 - Health endpoints for readiness/liveness checks.
 - Structured logs including shipment and leg identifiers for traceability.
 - Database migrations applied before rollout when schema changes affect `shipment_legs`, `pod_records`, or `shipment_leg_transitions`.
+
+## Realtime Transport Governance
+
+### Production Standard (Current)
+- Dashboard updates remain on short-polling HTTP requests.
+- Runtime remains synchronous Gunicorn workers on Cloud Run.
+- Production behavior is unchanged unless architecture review sign-off is completed.
+
+### Proposed WebSocket/Socket.IO Changes
+Any migration to WebSockets (including Socket.IO) is considered an architectural change request, not an implementation detail, because it impacts Cloud Run connection behavior, scaling assumptions, and state/session design.
+
+Before implementation, teams must complete ADR review and satisfy the approval gate defined in `docs/adr/0001-dashboard-realtime-transport.md`.
+
+### Gated Implementation Path
+1. **Default path (no approval):** optimize short-polling only (interval tuning, `ETag`/conditional fetch, payload minimization).
+2. **Approved path:** open a separate transport migration PR behind a feature flag with explicit rollback plan.
+
+No production transport change is allowed before review sign-off.
