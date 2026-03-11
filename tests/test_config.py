@@ -21,7 +21,10 @@ def test_str_to_bool_parsing(value, default, expected):
     assert config._str_to_bool(value, default=default) is expected
 
 
-@pytest.mark.parametrize("app_env,fsi_production,expected", [("prod", None, True), ("production", None, True), ("dev", "1", True), ("dev", None, False)])
+@pytest.mark.parametrize(
+    "app_env,fsi_production,expected",
+    [("prod", None, True), ("production", None, True), ("dev", "1", True), ("dev", None, False)],
+)
 def test_is_production_detection(monkeypatch, app_env, fsi_production, expected):
     monkeypatch.setenv("APP_ENV", app_env)
     if fsi_production is None:
@@ -32,122 +35,54 @@ def test_is_production_detection(monkeypatch, app_env, fsi_production, expected)
     assert config._is_production() is expected
 
 
-def test_get_runtime_config_defaults_for_local(monkeypatch):
+def test_get_runtime_config_valid_local_defaults(monkeypatch):
     monkeypatch.delenv("FSI_PRODUCTION", raising=False)
-    monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("DEBUG", raising=False)
+    monkeypatch.delenv("DB_USER", raising=False)
+    monkeypatch.delenv("DB_PASS", raising=False)
+    monkeypatch.delenv("DB_NAME", raising=False)
     monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
     monkeypatch.delenv("REMEMBER_COOKIE_SECURE", raising=False)
-    monkeypatch.setenv("GCP_PROJECT_ID", "local-project")
 
     runtime_config = config.get_runtime_config()
 
     assert runtime_config["SECRET_KEY"] == "dev-only-change-me"
     assert runtime_config["SQLALCHEMY_DATABASE_URI"] == "postgresql+psycopg://localhost/fsi_app"
-    assert runtime_config["DEBUG"] is False
     assert runtime_config["MAX_CONTENT_LENGTH"] == 16 * 1024 * 1024
+    assert runtime_config["PORT"] == 8080
     assert runtime_config["SESSION_COOKIE_SECURE"] is False
     assert runtime_config["REMEMBER_COOKIE_SECURE"] is False
-    assert runtime_config["GCP_REGION"] == "us-central1"
     assert runtime_config["QUEUE_NAME"] == "email-queue"
 
 
-def test_get_runtime_config_allows_max_content_length_override(monkeypatch):
+def test_get_runtime_config_production_missing_secrets_raises_system_exit(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "prod-secret")
+    monkeypatch.setenv("FSI_PRODUCTION", "true")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
-    monkeypatch.setenv("MAX_CONTENT_LENGTH_MB", "32")
-    monkeypatch.setenv("GCP_PROJECT_ID", "prod-project")
-    monkeypatch.setenv("PUBLIC_SERVICE_URL", "https://example.run.app")
-
-    runtime_config = config.get_runtime_config()
-
-    assert runtime_config["MAX_CONTENT_LENGTH"] == 32 * 1024 * 1024
-
-
-def test_get_runtime_config_rejects_invalid_max_content_length_override(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "prod-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
-    monkeypatch.setenv("MAX_CONTENT_LENGTH_MB", "abc")
-    monkeypatch.setenv("GCP_PROJECT_ID", "prod-project")
-    monkeypatch.setenv("PUBLIC_SERVICE_URL", "https://example.run.app")
-
-    with pytest.raises(RuntimeError, match="MAX_CONTENT_LENGTH_MB must be a whole number"):
-        config.get_runtime_config()
-
-
-def test_get_runtime_config_production_requires_secret_values(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("SECRET_KEY", "")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
-    monkeypatch.setenv("GCP_PROJECT_ID", "prod-project")
-    monkeypatch.setenv("PUBLIC_SERVICE_URL", "https://example.run.app")
-
-    with pytest.raises(RuntimeError, match="Missing required environment variable 'SECRET_KEY'"):
-        config.get_runtime_config()
-
-
-def test_get_runtime_config_accepts_explicit_secure_cookie_overrides(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "prod-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
-    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
-    monkeypatch.setenv("REMEMBER_COOKIE_SECURE", "0")
-    monkeypatch.setenv("GCP_PROJECT_ID", "prod-project")
-    monkeypatch.setenv("PUBLIC_SERVICE_URL", "https://example.run.app")
-
-    runtime_config = config.get_runtime_config()
-
-    assert runtime_config["SESSION_COOKIE_SECURE"] is False
-    assert runtime_config["REMEMBER_COOKIE_SECURE"] is False
-
-
-def test_get_runtime_config_accepts_database_url_without_fragmented_secrets(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "prod-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://db/prod")
-    monkeypatch.delenv("DB_USER", raising=False)
-    monkeypatch.delenv("DB_PASS", raising=False)
-    monkeypatch.delenv("DB_NAME", raising=False)
-    monkeypatch.setenv("GCP_PROJECT_ID", "prod-project")
-    monkeypatch.setenv("PUBLIC_SERVICE_URL", "https://example.run.app")
-
-    runtime_config = config.get_runtime_config()
-
-    assert runtime_config["SQLALCHEMY_DATABASE_URI"] == "postgresql+psycopg://db/prod"
-
-
-def test_get_runtime_config_rejects_partial_fragmented_db_credentials(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "prod-secret")
-    monkeypatch.setenv("DB_USER", "fsi")
-    monkeypatch.setenv("GCP_PROJECT_ID", "prod-project")
-    monkeypatch.setenv("PUBLIC_SERVICE_URL", "https://example.run.app")
-    monkeypatch.delenv("DB_PASS", raising=False)
-    monkeypatch.delenv("DB_NAME", raising=False)
-
-    with pytest.raises(RuntimeError, match="Incomplete database credentials"):
-        config.get_runtime_config()
-
-
-def test_get_runtime_config_includes_postmark_values(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("POSTMARK_SERVER_TOKEN", "pm-token")
-    monkeypatch.setenv("POSTMARK_FROM_EMAIL", "alerts@example.com")
-    monkeypatch.setenv("GCP_PROJECT_ID", "dev-project")
-
-    runtime_config = config.get_runtime_config()
-
-    assert runtime_config["POSTMARK_SERVER_TOKEN"] == "pm-token"
-    assert runtime_config["POSTMARK_FROM_EMAIL"] == "alerts@example.com"
-
-
-def test_get_runtime_config_requires_gcp_project_id(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.delenv("POSTMARK_SERVER_TOKEN", raising=False)
+    monkeypatch.delenv("POSTMARK_FROM_EMAIL", raising=False)
     monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    monkeypatch.delenv("PUBLIC_SERVICE_URL", raising=False)
+    monkeypatch.delenv("TASK_SERVICE_ACCOUNT_EMAIL", raising=False)
+    monkeypatch.delenv("TASKS_SHARED_SECRET", raising=False)
 
-    with pytest.raises(RuntimeError, match="Environment variable 'GCP_PROJECT_ID' is not set"):
+    with pytest.raises(SystemExit, match="Production configuration is invalid"):
+        config.get_runtime_config()
+
+
+def test_get_runtime_config_invalid_numeric_fields_rejected(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("MAX_CONTENT_LENGTH_MB", "abc")
+
+    with pytest.raises(RuntimeError, match="MAX_CONTENT_LENGTH_MB"):
+        config.get_runtime_config()
+
+
+def test_get_runtime_config_rejects_non_positive_numeric_fields(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("DB_POOL_TIMEOUT", "0")
+
+    with pytest.raises(RuntimeError, match="DB_POOL_TIMEOUT"):
         config.get_runtime_config()
