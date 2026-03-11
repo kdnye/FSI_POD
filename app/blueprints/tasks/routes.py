@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
+from app.services.couchdrop import CouchdropService
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
 from models import Shipment, User
 
@@ -24,7 +25,7 @@ def _log_task_validation_failure(reason: str, payload: dict[str, object]) -> Non
     )
 
 
-def _validate_task_request() -> tuple[dict[str, str], int] | None:
+def _validate_task_request(expected_path: str) -> tuple[dict[str, str], int] | None:
     task_name = request.headers.get("X-CloudTasks-TaskName")
     if not task_name:
         return jsonify({"error": "Missing required Cloud Tasks task header."}), 403
@@ -50,7 +51,7 @@ def _validate_task_request() -> tuple[dict[str, str], int] | None:
     if not public_service_url:
         return jsonify({"error": "PUBLIC_SERVICE_URL is not configured."}), 500
 
-    expected_audience = f"{public_service_url}/tasks/api/tasks/send-email"
+    expected_audience = f"{public_service_url}{expected_path}"
 
     try:
         claims = _verify_task_oidc_token(token=token, audience=expected_audience)
@@ -82,7 +83,7 @@ def _verify_task_oidc_token(token: str, audience: str) -> dict[str, object]:
 @tasks_bp.post("/api/tasks/send-email")
 @csrf.exempt
 def send_email_task() -> tuple[dict[str, str], int]:
-    auth_error = _validate_task_request()
+    auth_error = _validate_task_request("/tasks/api/tasks/send-email")
     if auth_error is not None:
         return auth_error
 
@@ -192,6 +193,37 @@ def send_email_task() -> tuple[dict[str, str], int]:
         )
 
     return jsonify({"status": "ok"}), 200
+
+
+@tasks_bp.post("/api/tasks/upload-couchdrop")
+@csrf.exempt
+def upload_couchdrop_task() -> tuple[dict[str, str], int]:
+    auth_error = _validate_task_request("/tasks/api/tasks/upload-couchdrop")
+    if auth_error is not None:
+        return auth_error
+
+    payload = request.get_json(silent=True) or {}
+    staged_blob_name = str(payload.get("staged_blob_name") or "").strip()
+    remote_path = str(payload.get("remote_path") or "").strip()
+    original_filename = str(payload.get("original_filename") or "").strip()
+    content_type = str(payload.get("content_type") or "").strip() or "application/octet-stream"
+    idempotency_key = str(payload.get("idempotency_key") or "").strip()
+
+    if not staged_blob_name or not remote_path or not original_filename or not idempotency_key:
+        return jsonify({"error": "Missing required couchdrop task payload fields."}), 400
+
+    uploaded, reason = CouchdropService.upload_staged_paperwork(
+        staged_blob_name=staged_blob_name,
+        remote_path=remote_path,
+        filename=original_filename,
+        content_type=content_type,
+    )
+    if not uploaded:
+        if reason in {"staged_blob_missing", "staged_blob_empty"}:
+            return jsonify({"status": "skipped", "reason": reason, "idempotency_key": idempotency_key}), 200
+        return jsonify({"error": "Failed couchdrop upload task.", "reason": reason, "idempotency_key": idempotency_key}), 500
+
+    return jsonify({"status": "ok", "idempotency_key": idempotency_key}), 200
 
 # app/blueprints/tasks/routes.py
 

@@ -29,6 +29,16 @@ class EmailTaskPayload:
     consignee_email: str | None = None
 
 
+@dataclass(slots=True)
+class CouchdropTaskPayload:
+    actor_user_id: int
+    original_filename: str
+    content_type: str
+    staged_blob_name: str
+    remote_path: str
+    idempotency_key: str
+
+
 def _validate_required_fields(payload: EmailTaskPayload) -> None:
     if payload.shipment_id is None:
         raise ValueError("EmailTaskPayload.shipment_id is required.")
@@ -61,6 +71,56 @@ def enqueue_email_task(payload: EmailTaskPayload) -> None:
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": f"{public_service_url.rstrip('/')}/tasks/api/tasks/send-email",
+            "headers": {"Content-Type": "application/json"},
+            "oidc_token": {"service_account_email": service_account_email},
+            "body": json.dumps(asdict(payload)).encode("utf-8"),
+        }
+    }
+    client.create_task(parent=parent, task=task)
+
+
+def _validate_couchdrop_required_fields(payload: CouchdropTaskPayload) -> None:
+    if payload.actor_user_id is None:
+        raise ValueError("CouchdropTaskPayload.actor_user_id is required.")
+    if not str(payload.original_filename or "").strip():
+        raise ValueError("CouchdropTaskPayload.original_filename is required.")
+    if not str(payload.content_type or "").strip():
+        raise ValueError("CouchdropTaskPayload.content_type is required.")
+    if not str(payload.staged_blob_name or "").strip():
+        raise ValueError("CouchdropTaskPayload.staged_blob_name is required.")
+    if not str(payload.remote_path or "").strip():
+        raise ValueError("CouchdropTaskPayload.remote_path is required.")
+    if not str(payload.idempotency_key or "").strip():
+        raise ValueError("CouchdropTaskPayload.idempotency_key is required.")
+
+
+def enqueue_couchdrop_task(payload: CouchdropTaskPayload) -> None:
+    _validate_couchdrop_required_fields(payload)
+
+    project_id = current_app.config.get("GCP_PROJECT_ID", "").strip()
+    public_service_url = current_app.config.get("PUBLIC_SERVICE_URL", "").strip()
+    service_account_email = current_app.config.get("TASK_SERVICE_ACCOUNT_EMAIL", "").strip()
+    region = current_app.config.get("GCP_REGION", "us-central1").strip()
+    queue_name = (
+        current_app.config.get("PAPERWORK_QUEUE_NAME")
+        or current_app.config.get("TASKS_EXPECTED_QUEUE_NAME")
+        or "email-queue"
+    ).strip()
+
+    if not project_id:
+        raise RuntimeError("GCP_PROJECT_ID is required to enqueue Cloud Tasks couchdrop jobs.")
+    if not public_service_url:
+        raise RuntimeError("PUBLIC_SERVICE_URL is required to enqueue Cloud Tasks couchdrop jobs.")
+    if not service_account_email:
+        raise RuntimeError("TASK_SERVICE_ACCOUNT_EMAIL is required to enqueue Cloud Tasks couchdrop jobs.")
+
+    tasks_v2 = _get_tasks_v2_module()
+    client = tasks_v2.CloudTasksClient()
+    parent = client.queue_path(project_id, region, queue_name)
+    task = {
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": f"{public_service_url.rstrip('/')}/tasks/api/tasks/upload-couchdrop",
             "headers": {"Content-Type": "application/json"},
             "oidc_token": {"service_account_email": service_account_email},
             "body": json.dumps(asdict(payload)).encode("utf-8"),

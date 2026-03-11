@@ -415,3 +415,112 @@ def test_send_email_task_route_rejects_missing_required_fields_after_auth(client
 
     assert response.status_code == 400
     assert response.get_json()["error"] == "Missing required task payload fields."
+
+
+def test_upload_couchdrop_task_route_accepts_trusted_request(client, app, monkeypatch):
+    observed = {}
+
+    def _fake_verify(token, audience):
+        observed["aud"] = audience
+        return {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        }
+
+    monkeypatch.setattr("app.blueprints.tasks.routes._verify_task_oidc_token", _fake_verify)
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes.CouchdropService.upload_staged_paperwork",
+        lambda **_kwargs: (True, "uploaded"),
+    )
+
+    response = client.post(
+        "/tasks/api/tasks/upload-couchdrop",
+        headers={
+            "X-CloudTasks-TaskName": "task-couchdrop-1",
+            "Authorization": "Bearer valid-token",
+        },
+        json={
+            "actor_user_id": 1,
+            "original_filename": "scan.pdf",
+            "content_type": "application/pdf",
+            "staged_blob_name": "couchdrop_queue/test/scan.pdf",
+            "remote_path": "/Paperwork/Driver_One/2026-01-01/scan.pdf",
+            "idempotency_key": "idem-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["idempotency_key"] == "idem-1"
+    assert observed["aud"] == "https://example.run.app/tasks/api/tasks/upload-couchdrop"
+
+
+def test_upload_couchdrop_task_route_returns_retryable_error_on_upload_failure(client, app, monkeypatch):
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        },
+    )
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes.CouchdropService.upload_staged_paperwork",
+        lambda **_kwargs: (False, "upload_connection_error"),
+    )
+
+    response = client.post(
+        "/tasks/api/tasks/upload-couchdrop",
+        headers={
+            "X-CloudTasks-TaskName": "task-couchdrop-2",
+            "Authorization": "Bearer valid-token",
+        },
+        json={
+            "actor_user_id": 1,
+            "original_filename": "scan.pdf",
+            "content_type": "application/pdf",
+            "staged_blob_name": "couchdrop_queue/test/scan.pdf",
+            "remote_path": "/Paperwork/Driver_One/2026-01-01/scan.pdf",
+            "idempotency_key": "idem-2",
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.get_json()["idempotency_key"] == "idem-2"
+
+
+def test_upload_couchdrop_task_route_treats_missing_blob_as_idempotent_skip(client, app, monkeypatch):
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes._verify_task_oidc_token",
+        lambda token, audience: {
+            "iss": "https://accounts.google.com",
+            "email": app.config["TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL"],
+            "email_verified": True,
+            "aud": audience,
+        },
+    )
+    monkeypatch.setattr(
+        "app.blueprints.tasks.routes.CouchdropService.upload_staged_paperwork",
+        lambda **_kwargs: (False, "staged_blob_missing"),
+    )
+
+    response = client.post(
+        "/tasks/api/tasks/upload-couchdrop",
+        headers={
+            "X-CloudTasks-TaskName": "task-couchdrop-3",
+            "Authorization": "Bearer valid-token",
+        },
+        json={
+            "actor_user_id": 1,
+            "original_filename": "scan.pdf",
+            "content_type": "application/pdf",
+            "staged_blob_name": "couchdrop_queue/test/scan.pdf",
+            "remote_path": "/Paperwork/Driver_One/2026-01-01/scan.pdf",
+            "idempotency_key": "idem-3",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "skipped"

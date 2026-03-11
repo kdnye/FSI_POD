@@ -14,6 +14,7 @@ from models import PODEvent, Role
 from app.blueprints.auth.guards import require_employee_approval
 from app.services.couchdrop import CouchdropService
 from app.services.gcs import GCSService
+from app.services.tasks import CouchdropTaskPayload, enqueue_couchdrop_task
 from app.services.shipment_workflow import ShipmentTransitionError, apply_pod_transition, normalize_pod_action
 from models import ExpectedDelivery
 from models import (
@@ -1227,7 +1228,11 @@ def upload():
 
         success_count = 0
         for file in files:
-            if CouchdropService.upload_driver_paperwork(g.current_user, file):
+            staged_payload = CouchdropService.stage_driver_paperwork_for_task(g.current_user, file)
+            if not staged_payload:
+                continue
+            enqueue_couchdrop_task(CouchdropTaskPayload(**staged_payload))
+            if staged_payload.get("idempotency_key"):
                 success_count += 1
         
         # Return lightweight JSON for sequential client-side uploads
