@@ -1,4 +1,6 @@
-from flask import Flask, g, jsonify, redirect, url_for
+import logging
+
+from flask import Flask, g, has_request_context, jsonify, redirect, request, url_for
 from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_limiter.util import get_remote_address
@@ -17,6 +19,50 @@ limiter = Limiter(
 )
 migrate = Migrate()
 
+TRACE_HEADER_NAME = "X-Cloud-Trace-Context"
+DEFAULT_TRACE_ID = "missing-trace-id"
+
+
+def _extract_trace_id(trace_header: str | None) -> str:
+    if not trace_header:
+        return DEFAULT_TRACE_ID
+
+    trace_id = trace_header.split("/", 1)[0].strip()
+    return trace_id or DEFAULT_TRACE_ID
+
+
+class RequestContextFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.trace_id = DEFAULT_TRACE_ID
+        record.request_id = "-"
+        record.route = "-"
+        record.method = "-"
+        record.status = "-"
+
+        if has_request_context():
+            record.trace_id = getattr(g, "trace_id", DEFAULT_TRACE_ID)
+            record.request_id = request.headers.get("X-Request-Id", "-")
+            record.route = getattr(request.url_rule, "rule", request.path)
+            record.method = request.method
+            status_code = getattr(g, "response_status_code", None)
+            record.status = str(status_code) if status_code is not None else "-"
+
+        return True
+
+
+def _configure_logging(app: Flask) -> None:
+    request_context_filter = RequestContextFilter()
+    formatter = logging.Formatter(
+        '{"severity":"%(levelname)s","message":"%(message)s","trace_id":"%(trace_id)s",'
+        '"request_id":"%(request_id)s","route":"%(route)s","method":"%(method)s",'
+        '"status":"%(status)s"}'
+    )
+
+    app.logger.addFilter(request_context_filter)
+    for handler in app.logger.handlers:
+        handler.addFilter(request_context_filter)
+        handler.setFormatter(formatter)
+
 def create_app(config_overrides: dict | None = None) -> Flask:
     app = Flask(
         __name__,
@@ -29,6 +75,8 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.config.update(get_runtime_config())
     if config_overrides:
         app.config.update(config_overrides)
+
+    _configure_logging(app)
 
     # Initialize extensions
     db.init_app(app)
@@ -57,6 +105,22 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(tasks_bp, url_prefix="/tasks")
 
     # --- Global Routes ---
+
+    @app.before_request
+    def bind_request_logging_context() -> None:
+        g.trace_id = _extract_trace_id(request.headers.get(TRACE_HEADER_NAME))
+        g.response_status_code = None
+
+    @app.after_request
+    def store_response_status(response):
+        g.response_status_code = response.status_code
+        return response
+
+    @app.teardown_request
+    def log_request_completion(exc: Exception | None) -> None:
+        if exc is not None:
+            g.response_status_code = 500
+        app.logger.info("request.completed")
 
     @app.get("/readyz")
     def readiness_check():
