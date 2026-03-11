@@ -57,11 +57,27 @@ gcloud builds submit --config cloudbuild.yaml .
 The pipeline:
 1. Builds the container image.
 2. Pushes image to Artifact Registry.
-3. Executes the migration job (`flask db upgrade --directory alembic`).
+3. Executes the migration job (`flask db upgrade --directory alembic`) — this is the only approved schema rollout path.
 4. Deploys to Cloud Run with required env + secrets wiring.
 
-### Deployment Runbook Requirement (Load Board MAWB)
-Before serving code that reads `LoadBoard.mawb_number`, run the SQL migration in `migrations/20260304_add_load_board_mawb_number.sql` (or equivalent Alembic revision) against the target database.
+### Schema Migration Policy
+Use Alembic only for schema rollouts:
+
+```bash
+flask db upgrade --directory alembic
+```
+
+Legacy SQL scripts in `migrations/` are retained for historical context only and are deprecated for execution.
+
+### Legacy SQL to Alembic Mapping (Inventory)
+| Legacy SQL file | Alembic replacement revision | Status |
+|---|---|---|
+| `migrations/20260303_add_is_ops_to_users.sql` | `alembic/versions/20260306_01_add_users_is_ops_flag.py` | Deprecated SQL; use Alembic |
+| `migrations/20260303_decouple_pod_records.sql` | `alembic/versions/20260306_02_decouple_pod_records.py` | Deprecated SQL; use Alembic |
+| `migrations/20260304_add_shipment_tables.sql` | `alembic/versions/20260306_03_add_shipment_tables.py` | Deprecated SQL; use Alembic |
+| `migrations/20260304_add_pod_record_location_and_leg_fields.sql` | `alembic/versions/20260306_04_add_pod_record_location_and_leg_fields.py` | Deprecated SQL; use Alembic |
+| `migrations/20260304_add_notification_settings_and_emails.sql` | `alembic/versions/20260306_05_add_notification_settings_and_emails.py` | Deprecated SQL; use Alembic |
+| `migrations/20260304_add_load_board_mawb_number.sql` | `alembic/versions/20260304_02_add_load_board_mawb_number.py` | Deprecated SQL; use Alembic |
 
 Recommended verification step after migration and before cutover:
 ```bash
@@ -98,7 +114,8 @@ Adjust via Cloud Build substitutions if your organization uses different naming.
 The `wsgi.py` file keeps local bootstrap behavior while production execution is handled by the Docker `CMD`.
 
 ## Developer Notes
-- Register every new database table name as a constant in `models.py` (with the other `*_TABLE` constants) before referencing it in SQLAlchemy models or migrations.
+- Register every new database table name as a module-level constant in `models.py` using the `<TABLE_NAME_UPPER>_TABLE` naming convention before referencing it in SQLAlchemy models or migrations.
+- Do not execute files in `migrations/*.sql` for schema rollout; they are deprecated historical references.
 
 ## Font Loading Strategy
 The UI uses two branded web fonts at runtime:

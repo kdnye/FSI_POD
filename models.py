@@ -24,6 +24,15 @@ USERS_TABLE = "users"
 WORKFLOWS_TABLE = "workflows"
 QUOTES_TABLE = "quotes"
 AUDIT_LOGS_TABLE = "audit_logs"
+POD_EVENTS_TABLE = "pod_events"
+EXPECTED_DELIVERIES_TABLE = "expected_deliveries"
+LOAD_BOARD_TABLE = "load_board"
+SHIPMENT_GROUPS_TABLE = "shipment_groups"
+SHIPMENTS_TABLE = "shipments"
+SHIPMENT_LEGS_TABLE = "shipment_legs"
+SHIPMENT_LEG_TRANSITIONS_TABLE = "shipment_leg_transitions"
+POD_RECORDS_TABLE = "pod_records"
+NOTIFICATION_SETTINGS_TABLE = "notification_settings"
 
 
 class Role(str, Enum):
@@ -109,7 +118,7 @@ class User(db.Model):
 
 
 class PODEvent(db.Model):
-    __tablename__ = "pod_events"
+    __tablename__ = POD_EVENTS_TABLE
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
@@ -131,7 +140,7 @@ class PODEvent(db.Model):
 
 
 class ExpectedDelivery(db.Model):
-    __tablename__ = "expected_deliveries"
+    __tablename__ = EXPECTED_DELIVERIES_TABLE
 
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.String(50), index=True)
@@ -143,7 +152,7 @@ class ExpectedDelivery(db.Model):
 
 
 class LoadBoard(db.Model):
-    __tablename__ = "load_board"
+    __tablename__ = LOAD_BOARD_TABLE
 
     hwb_number = db.Column(db.String(100), primary_key=True)
     mawb_number = db.Column(db.String(100), index=True, nullable=True)
@@ -158,7 +167,7 @@ class LoadBoard(db.Model):
 
 
 class ShipmentGroup(db.Model):
-    __tablename__ = "shipment_groups"
+    __tablename__ = SHIPMENT_GROUPS_TABLE
 
     id = db.Column(Integer, primary_key=True)
     mawb_number = db.Column(String(100), nullable=False, unique=True, index=True)
@@ -173,7 +182,7 @@ class ShipmentGroup(db.Model):
 
 
 class Shipment(db.Model):
-    __tablename__ = "shipments"
+    __tablename__ = SHIPMENTS_TABLE
 
     id = db.Column(Integer, primary_key=True)
     hwb_number = db.Column(String(100), nullable=False, unique=True, index=True)
@@ -202,7 +211,7 @@ class Shipment(db.Model):
 
 
 class ShipmentLeg(db.Model):
-    __tablename__ = "shipment_legs"
+    __tablename__ = SHIPMENT_LEGS_TABLE
 
     id = db.Column(Integer, primary_key=True)
     shipment_id = db.Column(Integer, ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False)
@@ -250,7 +259,7 @@ class ShipmentLeg(db.Model):
 
 
 class ShipmentLegTransition(db.Model):
-    __tablename__ = "shipment_leg_transitions"
+    __tablename__ = SHIPMENT_LEG_TRANSITIONS_TABLE
 
     id = db.Column(Integer, primary_key=True)
     shipment_id = db.Column(Integer, ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -284,7 +293,7 @@ class ShipmentLegTransition(db.Model):
 
 
 class PODRecord(db.Model):
-    __tablename__ = "pod_records"
+    __tablename__ = POD_RECORDS_TABLE
 
     id = db.Column(db.Integer, primary_key=True)
     hwb_number = db.Column(db.String(100), index=True, nullable=True)
@@ -310,7 +319,7 @@ class PODRecord(db.Model):
 
 
 class NotificationSettings(db.Model):
-    __tablename__ = "notification_settings"
+    __tablename__ = NOTIFICATION_SETTINGS_TABLE
 
     id = db.Column(Integer, primary_key=True)
     notify_shipper_pickup = db.Column(Boolean, nullable=False, default=False)

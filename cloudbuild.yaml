@@ -1,4 +1,6 @@
 steps:
+  # Schema rollout policy: execute Alembic migrations only via `flask db upgrade --directory alembic`.
+  # Manual SQL files under migrations/ are deprecated and must not be used in deployment pipelines.
   - id: Build image
     name: gcr.io/cloud-builders/docker
     args:
@@ -13,7 +15,7 @@ steps:
       - push
       - ${_IMAGE}
 
-  - id: Deploy migration job
+  - id: Deploy migration job  # Defines the only approved schema rollout command.
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
