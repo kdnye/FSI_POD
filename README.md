@@ -15,6 +15,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+`requirements.txt` is maintained as a pinned baseline (`==`) for reproducible local, CI, and Cloud Run builds.
+
 Create a local `.env` file (or export vars in your shell):
 ```env
 APP_ENV=local
