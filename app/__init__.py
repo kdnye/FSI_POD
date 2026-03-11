@@ -62,17 +62,17 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def readiness_check():
         """Used by Cloud Run to verify the container is healthy and DB is connected."""
         with app.app_context():
-            report = schema_checks.get_required_schema_report()
+            report = schema_checks.get_readiness_report()
 
         if report["ok"]:
-            return jsonify({"status": "ok"}), 200
+            return jsonify({"status": "ok", "components": report["components"]}), 200
 
         return (
             jsonify(
                 {
                     "status": "error",
-                    "error": report["error"],
-                    "missing_columns": report["missing_columns"],
+                    "errors": report["errors"],
+                    "components": report["components"],
                 }
             ),
             503,
