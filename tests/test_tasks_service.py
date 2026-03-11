@@ -2,7 +2,12 @@ import json
 
 import pytest
 
-from app.services.tasks import EmailTaskPayload, enqueue_email_task
+from app.services.tasks import (
+    CouchdropTaskPayload,
+    EmailTaskPayload,
+    enqueue_couchdrop_task,
+    enqueue_email_task,
+)
 
 
 def test_enqueue_email_task_creates_cloud_task_with_blob_names(monkeypatch, app):
@@ -46,7 +51,7 @@ def test_enqueue_email_task_creates_cloud_task_with_blob_names(monkeypatch, app)
 
     assert created["queue_path_args"] == ("test-project", "us-central1", "email-queue")
     assert created["parent"] == "projects/test/locations/us-central1/queues/email-queue"
-    assert created["task"]["http_request"]["url"] == "https://example.run.app/api/tasks/send-email"
+    assert created["task"]["http_request"]["url"] == "https://example.run.app/tasks/api/tasks/send-email"
     assert created["task"]["http_request"]["oidc_token"] == {
         "service_account_email": "tasks-invoker@example.iam.gserviceaccount.com"
     }
@@ -67,3 +72,43 @@ def test_enqueue_email_task_validates_required_fields(app):
                 actor_user_id=5,
             )
         )
+
+
+def test_enqueue_couchdrop_task_creates_cloud_task(monkeypatch, app):
+    created = {}
+
+    class FakeClient:
+        def queue_path(self, project_id, region, queue_name):
+            created["queue_path_args"] = (project_id, region, queue_name)
+            return "projects/test/locations/us-central1/queues/email-queue"
+
+        def create_task(self, parent, task):
+            created["parent"] = parent
+            created["task"] = task
+
+    class FakeTasksModule:
+        CloudTasksClient = FakeClient
+
+        class HttpMethod:
+            POST = "POST"
+
+    monkeypatch.setattr("app.services.tasks._get_tasks_v2_module", lambda: FakeTasksModule)
+
+    with app.app_context():
+        enqueue_couchdrop_task(
+            CouchdropTaskPayload(
+                actor_user_id=5,
+                original_filename="scan.pdf",
+                content_type="application/pdf",
+                staged_blob_name="couchdrop_queue/2026-01-01/abc123/scan.pdf",
+                remote_path="/Paperwork/Test_User/2026-01-01/scan.pdf",
+                idempotency_key="abc123",
+            )
+        )
+
+    body = json.loads(created["task"]["http_request"]["body"].decode("utf-8"))
+
+    assert created["queue_path_args"] == ("test-project", "us-central1", "email-queue")
+    assert created["task"]["http_request"]["url"] == "https://example.run.app/tasks/api/tasks/upload-couchdrop"
+    assert body["staged_blob_name"] == "couchdrop_queue/2026-01-01/abc123/scan.pdf"
+    assert body["idempotency_key"] == "abc123"
