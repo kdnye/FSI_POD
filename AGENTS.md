@@ -3,6 +3,8 @@
 ## Purpose
 This document establishes guardrails for AI coding assistants and developers contributing to the FSI repository. Preserve these patterns to maintain system stability and architectural alignment.
 
+See also: [FSI_ECOSYSTEM.md](./FSI_ECOSYSTEM.md) for the full app portfolio and shared DB schema map.
+
 ## Architectural Directives
 
 ### 1. Frontend & Device APIs
@@ -27,3 +29,13 @@ This document establishes guardrails for AI coding assistants and developers con
 ### 5. Code Style
 * Write concise, pragmatic Python. Avoid unnecessary abstraction layers.
 * Fail fast. Validate constraints (weight limits, file sizes, role access) at the top of the route or service function.
+
+## Ecosystem Context
+
+This application is part of the FSI shared infrastructure ecosystem. See [FSI_ECOSYSTEM.md](./FSI_ECOSYSTEM.md) for the full app portfolio and cross-app data flows.
+
+**Shared DB role:** This app owns `shipments`, `shipment_legs`, `pod_records`, and `shipment_leg_transitions` tables. It consumes `users` (owned by `kdnye/expenses`) as read-only for driver identity.
+
+**Schema ownership rule:** Never run structural migrations against `users`. When running `flask db migrate`, review generated revisions and remove any destructive operations on `users` before applying.
+
+**Governance:** This app follows the [FSI Application Architecture Standard](https://github.com/kdnye/lifecycle/blob/main/FSI%20Application%20Architecture%20Standard%3A%20Technical%20Governance%20Handbook) in full.
