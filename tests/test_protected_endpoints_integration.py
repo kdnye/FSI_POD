@@ -22,7 +22,8 @@ def test_unapproved_user_sees_mixed_protected_outcomes(client, create_user):
     assert dashboard_response.headers["Location"].endswith("/auth/pending-approval")
 
     assert gate_response.status_code == 403
-    assert gate_response.get_json() == {"error": "Employee approval is required."}
+    assert gate_response.get_json()["error"] == "Employee approval is required."
+    assert "approve your employee account" in gate_response.get_json()["remediation"]
 
 
 def test_approved_admin_receives_expected_statuses_by_policy(client, create_user):
