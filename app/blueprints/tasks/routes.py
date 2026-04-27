@@ -7,10 +7,15 @@ from flask import Blueprint, current_app, jsonify, request
 
 from app import csrf, db
 from app.services.couchdrop import CouchdropService
+from app.services.gcs import generate_signed_url
 from app.services.postmark import ALLOWED_SHIPMENT_ALERT_ACTIONS, send_shipment_alert
 from models import Shipment, User
 
 tasks_bp = Blueprint("tasks", __name__)
+
+
+def _error_response(message: str, remediation: str, status_code: int):
+    return jsonify({"error": message, "remediation": remediation}), status_code
 
 
 def _log_task_validation_failure(reason: str, payload: dict[str, object]) -> None:
@@ -28,28 +33,52 @@ def _log_task_validation_failure(reason: str, payload: dict[str, object]) -> Non
 def _validate_task_request(expected_path: str) -> tuple[dict[str, str], int] | None:
     task_name = request.headers.get("X-CloudTasks-TaskName")
     if not task_name:
-        return jsonify({"error": "Missing required Cloud Tasks task header."}), 403
+        return _error_response(
+            "Missing required Cloud Tasks task header.",
+            "Invoke this endpoint only through Cloud Tasks and include the X-CloudTasks-TaskName header.",
+            403,
+        )
 
     expected_queue_name = (current_app.config.get("TASKS_EXPECTED_QUEUE_NAME") or "").strip()
     queue_name = (request.headers.get("X-CloudTasks-QueueName") or "").strip()
     if queue_name and expected_queue_name and queue_name != expected_queue_name:
-        return jsonify({"error": "Invalid Cloud Tasks queue metadata."}), 403
+        return _error_response(
+            "Invalid Cloud Tasks queue metadata.",
+            "Ensure the task is dispatched from the configured queue name.",
+            403,
+        )
 
     auth_header = (request.headers.get("Authorization") or "").strip()
     if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Missing Bearer token for task request."}), 403
+        return _error_response(
+            "Missing Bearer token for task request.",
+            "Attach a valid OIDC Bearer token in the Authorization header for this task endpoint.",
+            403,
+        )
 
     token = auth_header.removeprefix("Bearer ").strip()
     if not token:
-        return jsonify({"error": "Missing Bearer token for task request."}), 403
+        return _error_response(
+            "Missing Bearer token for task request.",
+            "Attach a non-empty OIDC Bearer token in the Authorization header for this task endpoint.",
+            403,
+        )
 
     expected_invoker_email = (current_app.config.get("TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL") or "").strip()
     if not expected_invoker_email:
-        return jsonify({"error": "Task endpoint invoker is not configured."}), 403
+        return _error_response(
+            "Task endpoint invoker is not configured.",
+            "Set TASKS_EXPECTED_INVOKER_SERVICE_ACCOUNT_EMAIL to the Cloud Tasks service account email.",
+            403,
+        )
 
     public_service_url = (current_app.config.get("PUBLIC_SERVICE_URL") or "").strip().rstrip("/")
     if not public_service_url:
-        return jsonify({"error": "PUBLIC_SERVICE_URL is not configured."}), 500
+        return _error_response(
+            "PUBLIC_SERVICE_URL is not configured.",
+            "Set PUBLIC_SERVICE_URL to the public base URL for this service.",
+            500,
+        )
 
     expected_audience = f"{public_service_url}{expected_path}"
 
@@ -57,18 +86,34 @@ def _validate_task_request(expected_path: str) -> tuple[dict[str, str], int] | N
         claims = _verify_task_oidc_token(token=token, audience=expected_audience)
     except Exception as exc:  # pragma: no cover - defensive logging
         current_app.logger.warning("Failed to verify Cloud Tasks OIDC token: %s", exc)
-        return jsonify({"error": "Invalid task authentication token."}), 403
+        return _error_response(
+            "Invalid task authentication token.",
+            "Refresh the task token and verify the audience matches this endpoint URL.",
+            403,
+        )
 
     issuer = str(claims.get("iss", "")).strip()
     if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
-        return jsonify({"error": "Invalid token issuer for task request."}), 403
+        return _error_response(
+            "Invalid token issuer for task request.",
+            "Use a Google-issued OIDC token from Cloud Tasks.",
+            403,
+        )
 
     token_email = str(claims.get("email", "")).strip().lower()
     if token_email != expected_invoker_email.lower():
-        return jsonify({"error": "Token principal is not allowed for task request."}), 403
+        return _error_response(
+            "Token principal is not allowed for task request.",
+            "Configure Cloud Tasks to sign requests with the expected invoker service account.",
+            403,
+        )
 
     if claims.get("email_verified") is False:
-        return jsonify({"error": "Token email must be verified for task request."}), 403
+        return _error_response(
+            "Token email must be verified for task request.",
+            "Use a verified service account identity for task authentication.",
+            403,
+        )
 
     return None
 
@@ -105,28 +150,48 @@ def send_email_task() -> tuple[dict[str, str], int]:
 
     if shipment_id is None or actor_user_id is None or not action_type:
         _log_task_validation_failure("missing_required_fields", payload)
-        return jsonify({"error": "Missing required task payload fields."}), 400
+        return _error_response(
+            "Missing required task payload fields.",
+            "Provide shipment_id, actor_user_id, and action_type in the JSON payload.",
+            400,
+        )
 
     if not isinstance(action_type, str):
         _log_task_validation_failure("invalid_action_type_type", payload)
-        return jsonify({"error": "Invalid action_type for email task."}), 400
+        return _error_response(
+            "Invalid action_type for email task.",
+            "Send action_type as a non-empty string matching a supported shipment alert action.",
+            400,
+        )
 
     normalized_action_type = action_type.strip().upper()
     if not normalized_action_type or normalized_action_type not in ALLOWED_SHIPMENT_ALERT_ACTIONS:
         _log_task_validation_failure("unknown_action_type", payload)
-        return jsonify({"error": "Invalid action_type for email task."}), 400
+        return _error_response(
+            "Invalid action_type for email task.",
+            "Use one of the supported shipment alert action types.",
+            400,
+        )
 
     try:
         shipment_id_int = int(shipment_id)
     except (TypeError, ValueError):
         _log_task_validation_failure("malformed_shipment_id", payload)
-        return jsonify({"error": "Invalid shipment_id for email task."}), 400
+        return _error_response(
+            "Invalid shipment_id for email task.",
+            "Provide shipment_id as an integer value.",
+            400,
+        )
 
     try:
         actor_user_id_int = int(actor_user_id)
     except (TypeError, ValueError):
         _log_task_validation_failure("malformed_actor_user_id", payload)
-        return jsonify({"error": "Invalid actor_user_id for email task."}), 400
+        return _error_response(
+            "Invalid actor_user_id for email task.",
+            "Provide actor_user_id as an integer value.",
+            400,
+        )
 
     shipment = db.session.get(Shipment, shipment_id_int)
     if shipment is not None:
@@ -145,21 +210,51 @@ def send_email_task() -> tuple[dict[str, str], int]:
     def _get_raw_string(val: object) -> str | None:
         return val if isinstance(val, str) and val.strip() else None
 
+    photo_url = None
+    signature_url = None
+    try:
+        if _get_raw_string(photo_blob_name):
+            photo_url = generate_signed_url(_get_raw_string(photo_blob_name))
+        if _get_raw_string(signature_blob_name):
+            signature_url = generate_signed_url(_get_raw_string(signature_blob_name))
+    except Exception:
+        current_app.logger.exception(
+            "Shipment alert task failed while generating signed URL action_type=%s hwb_number=%s task_name=%s request_id=%s",
+            action_type,
+            hwb_number,
+            task_name,
+            request_id,
+        )
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "message": "Failed to send shipment alert.",
+                        "hwb_number": hwb_number,
+                        "action_type": action_type,
+                        "reason": "signed_url_generation_failed",
+                        "remediation": "Verify GCS credentials and blob paths, then retry this task.",
+                    }
+                }
+            ),
+            500,
+        )
+
     sent, reason = send_shipment_alert(
             action_type=normalized_action_type,
             hwb_number=hwb_number,
             location_name=location_name,
             driver_email=driver_email if isinstance(driver_email, str) else None,
             driver_name=driver_name if isinstance(driver_name, str) else None,
-            photo_url=_get_raw_string(photo_blob_name),
-            signature_url=_get_raw_string(signature_blob_name),
+            photo_url=photo_url,
+            signature_url=signature_url,
             shipper_email=shipper_email,
             consignee_email=consignee_email,
             timestamp=timestamp,
     )
 
     if not sent:
-        if reason in {"missing_recipients", "disabled_settings"}:
+        if reason in {"disabled_settings"}:
             current_app.logger.info(
                 "Shipment alert task skipped action_type=%s hwb_number=%s reason=%s task_name=%s request_id=%s",
                 action_type,
@@ -186,6 +281,7 @@ def send_email_task() -> tuple[dict[str, str], int]:
                         "hwb_number": hwb_number,
                         "action_type": action_type,
                         "reason": reason,
+                        "remediation": "Check Postmark configuration, recipient settings, and retry this task.",
                     }
                 }
             ),
@@ -210,7 +306,11 @@ def upload_couchdrop_task() -> tuple[dict[str, str], int]:
     idempotency_key = str(payload.get("idempotency_key") or "").strip()
 
     if not staged_blob_name or not remote_path or not original_filename or not idempotency_key:
-        return jsonify({"error": "Missing required couchdrop task payload fields."}), 400
+        return _error_response(
+            "Missing required couchdrop task payload fields.",
+            "Provide staged_blob_name, remote_path, original_filename, and idempotency_key in the payload.",
+            400,
+        )
 
     uploaded, reason = CouchdropService.upload_staged_paperwork(
         staged_blob_name=staged_blob_name,
@@ -221,7 +321,17 @@ def upload_couchdrop_task() -> tuple[dict[str, str], int]:
     if not uploaded:
         if reason in {"staged_blob_missing", "staged_blob_empty"}:
             return jsonify({"status": "skipped", "reason": reason, "idempotency_key": idempotency_key}), 200
-        return jsonify({"error": "Failed couchdrop upload task.", "reason": reason, "idempotency_key": idempotency_key}), 500
+        return (
+            jsonify(
+                {
+                    "error": "Failed couchdrop upload task.",
+                    "reason": reason,
+                    "idempotency_key": idempotency_key,
+                    "remediation": "Verify Couchdrop credentials, remote path access, and staged file integrity before retrying.",
+                }
+            ),
+            500,
+        )
 
     return jsonify({"status": "ok", "idempotency_key": idempotency_key}), 200
 
@@ -240,7 +350,7 @@ def test_email_connectivity():
     from_email = "pod@freightservices.net" 
     
     if not token:
-        return "ERROR: POSTMARK_SERVER_TOKEN is missing in config.", 500
+        return "ERROR: POSTMARK_SERVER_TOKEN is missing in config. Remediation: set POSTMARK_SERVER_TOKEN and retry.", 500
 
     # Payload mimicking your Java snippet
     payload = {
@@ -268,10 +378,14 @@ def test_email_connectivity():
             return "SUCCESS: Standard email sent. API Token and Stream are valid.", 200
         else:
             # This will capture the exact error message from Postmark (e.g., 'Invalid Message Stream')
-            return f"FAILURE: Postmark rejected the request. Status: {response.status_code} | Body: {response.text}", 500
+            return (
+                "FAILURE: Postmark rejected the request. "
+                f"Status: {response.status_code} | Body: {response.text} | "
+                "Remediation: validate POSTMARK_MESSAGE_STREAM, sender signature, and server token permissions."
+            ), 500
             
     except Exception as e:
-        return f"CRITICAL ERROR: {str(e)}", 500
-    except Exception as e:
-        import traceback
-        return f"CRITICAL ERROR: {str(e)}\n\n{traceback.format_exc()}", 500
+        return (
+            f"CRITICAL ERROR: {str(e)} | "
+            "Remediation: verify outbound network access to api.postmarkapp.com and application credentials."
+        ), 500

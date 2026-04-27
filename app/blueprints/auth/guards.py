@@ -9,6 +9,10 @@ from app import db
 from models import User
 
 
+def _error_response(message: str, remediation: str, status_code: int):
+    return jsonify({"error": message, "remediation": remediation}), status_code
+
+
 def _load_current_user() -> User | None:
     """Resolve the current user from session state."""
     user_id = session.get("current_user_id")
@@ -38,7 +42,11 @@ def require_employee_approval(
             if redirect_endpoint:
                 return redirect(url_for(redirect_endpoint))
 
-            return jsonify({"error": "Employee approval is required."}), 403
+            return _error_response(
+                "Employee approval is required.",
+                "Ask an administrator to approve your employee account, then sign in again.",
+                403,
+            )
 
         return wrapped
 

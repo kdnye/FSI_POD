@@ -38,7 +38,8 @@ def test_unapproved_user_gets_403_on_api_guard(client, create_user):
     response = client.get("/auth/gate/internal_dashboard/view")
 
     assert response.status_code == 403
-    assert response.get_json() == {"error": "Employee approval is required."}
+    assert response.get_json()["error"] == "Employee approval is required."
+    assert "approve your employee account" in response.get_json()["remediation"]
 
 
 def test_employee_denied_finance_action(client, create_user):
@@ -53,6 +54,7 @@ def test_employee_denied_finance_action(client, create_user):
     assert response.get_json()["error"] == "Access denied."
     assert "ACCESS_DENIED insufficient_role" in response.get_json()["detail"]
     assert "required=FINANCE" in response.get_json()["detail"]
+    assert "Request a role" in response.get_json()["remediation"]
 
 
 def test_finance_can_approve_finance_action(client, create_user):

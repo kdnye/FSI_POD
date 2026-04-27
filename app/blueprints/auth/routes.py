@@ -70,6 +70,18 @@ def gate(resource: str, action: str):
     decision = evaluate_access(user_role=user.role, resource=resource, action=action)
 
     if not decision.allowed:
-        return jsonify({"error": "Access denied.", "detail": decision.message}), 403
+        return (
+            jsonify(
+                {
+                    "error": "Access denied.",
+                    "detail": decision.message,
+                    "remediation": (
+                        f"Request a role with '{action.lower()}' permission on '{resource.lower()}', "
+                        "or use an authorized account."
+                    ),
+                }
+            ),
+            403,
+        )
 
     return {"resource": resource.lower(), "action": action.lower(), "allowed": True}

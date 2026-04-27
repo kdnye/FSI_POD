@@ -33,6 +33,10 @@ paperwork_bp = Blueprint("paperwork", __name__)
 ARIZONA_TZ = ZoneInfo("America/Phoenix")
 
 
+def _json_error(message: str, remediation: str, status_code: int):
+    return jsonify({"error": message, "remediation": remediation}), status_code
+
+
 def current_user_role() -> str:
     role = getattr(g.current_user, "role", None)
     raw_role = getattr(role, "value", role)
@@ -59,7 +63,7 @@ def is_ops_or_admin_user() -> bool:
 
 def require_ops_or_admin_or_redirect(redirect_endpoint: str):
     if not is_ops_or_admin_user():
-        flash("Ops or admin access is required.")
+        flash("Ops or admin access is required. Remediation: sign in with an Ops/Admin account or request elevated access.")
         return redirect(url_for(redirect_endpoint))
     return None
 
@@ -479,7 +483,10 @@ def log_pod_event():
     reassignment_note = (request.form.get("reassignment_note") or "").strip() or None
 
     if not hwb_number:
-        message = {"error": "HWB number is required."}
+        message = {
+            "error": "HWB number is required.",
+            "remediation": "Scan or enter a valid HWB (or MAWB) before submitting the POD event.",
+        }
         if is_ajax:
             return jsonify(message), 400
         flash(message["error"])
@@ -505,8 +512,13 @@ def log_pod_event():
                 raise ValueError("Signature stream is not seekable.")
             signature_file.stream.seek(0)
         except Exception as e:
-            if is_ajax: return jsonify({"error": "Failed to decode signature"}), 400
-            flash("Failed to process signature.")
+            if is_ajax:
+                return _json_error(
+                    "Failed to decode signature.",
+                    "Capture the signature again and ensure a valid base64 PNG payload is submitted.",
+                    400,
+                )
+            flash("Failed to process signature. Remediation: capture the signature again and resubmit.")
             return redirect(url_for("paperwork.log_pod_event"))
 
     # 3. Database Insertion & Storage Logic Execution
@@ -530,19 +542,24 @@ def log_pod_event():
     except ShipmentTransitionError as e:
         db.session.rollback()
         if is_ajax:
-            return jsonify({"error": str(e)}), 400
-        flash(str(e))
+            return _json_error(str(e), "Follow the shipment leg sequence shown in the load board before retrying.", 400)
+        flash(f"{str(e)} Remediation: follow the shipment leg sequence in the load board.")
         return redirect(url_for("paperwork.log_pod_event"))
     except ValueError as e:
         db.session.rollback()
         if is_ajax:
-            return jsonify({"error": str(e)}), 400
-        flash(str(e))
+            return _json_error(str(e), "Correct the highlighted input fields and retry submission.", 400)
+        flash(f"{str(e)} Remediation: correct the highlighted inputs and retry.")
         return redirect(url_for("paperwork.log_pod_event"))
     except Exception as e:
         db.session.rollback()
-        if is_ajax: return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
-        flash("Transaction failed. Please try again.")
+        if is_ajax:
+            return _json_error(
+                f"Transaction failed: {str(e)}",
+                "Retry once. If the issue persists, provide the timestamp and HWB to support for investigation.",
+                500,
+            )
+        flash("Transaction failed. Please try again. Remediation: retry once, then contact support with the HWB and timestamp.")
         return redirect(url_for("paperwork.log_pod_event"))
 
     if is_ajax:
@@ -558,7 +575,11 @@ def scan_hwb():
     payload = request.get_json(silent=True) or {}
     hwb_number = (payload.get("hwb_number") or "").strip()
     if not hwb_number:
-        return jsonify({"error": "HWB number is required."}), 400
+        return _json_error(
+            "HWB number is required.",
+            "Provide a non-empty HWB (or MAWB) value in the request payload.",
+            400,
+        )
 
     target_load_entries = get_load_entries_by_identifier(hwb_number)
     if not target_load_entries:
@@ -715,7 +736,11 @@ def active_load_board():
 @require_employee_approval()
 def clear_load_board():
     if not is_ops_or_admin_user():
-        return jsonify({"error": "Ops or Admin access required."}), 403
+        return _json_error(
+            "Ops or Admin access required.",
+            "Sign in with an Ops/Admin account or request elevated privileges.",
+            403,
+        )
 
     payload = request.get_json(silent=True) or {}
     target_hwb = (payload.get("hwb_number") or "").strip()
@@ -723,10 +748,18 @@ def clear_load_board():
     hard_delete = bool(payload.get("hard_delete", False))
 
     if not target_hwb:
-        return jsonify({"error": "Target HWB or 'ALL' required."}), 400
+        return _json_error(
+            "Target HWB or 'ALL' required.",
+            "Set hwb_number to a specific shipment ID or the literal value 'ALL'.",
+            400,
+        )
 
     if resolution not in {"CANCELLED", "COMPLETED_3RD_PARTY"}:
-        return jsonify({"error": "Invalid resolution type."}), 400
+        return _json_error(
+            "Invalid resolution type.",
+            "Use resolution 'CANCELLED' or 'COMPLETED_3RD_PARTY'.",
+            400,
+        )
 
     def log_clearance(hwb_number: str, action_type: str) -> None:
         db.session.add(
@@ -772,35 +805,55 @@ def clear_load_board():
         return jsonify({"success": True, "message": f"Successfully resolved {cleared_count} records as {resolution}."}), 200
     except Exception as exc:
         db.session.rollback()
-        return jsonify({"error": f"Database error: {str(exc)}"}), 500
+        return _json_error(
+            f"Database error: {str(exc)}",
+            "Retry the operation. If it fails again, capture the request payload and server logs for support.",
+            500,
+        )
 
 
 @paperwork_bp.post("/load-board/assign-driver")
 @require_employee_approval()
 def assign_driver_to_load():
     if not is_ops_or_admin_user():
-        return jsonify({"error": "Ops or Admin access required."}), 403
+        return _json_error(
+            "Ops or Admin access required.",
+            "Sign in with an Ops/Admin account or request elevated privileges.",
+            403,
+        )
 
     payload = request.get_json(silent=True) or {}
     target_hwb = (payload.get("hwb_number") or "").strip()
     driver_id_raw = payload.get("driver_id")
 
     if not target_hwb:
-        return jsonify({"error": "HWB number is required."}), 400
+        return _json_error(
+            "HWB number is required.",
+            "Provide a non-empty HWB number in the request payload.",
+            400,
+        )
 
     try:
         driver_id = int(driver_id_raw) if driver_id_raw else None
     except (TypeError, ValueError):
-        return jsonify({"error": "Invalid driver id."}), 400
+        return _json_error("Invalid driver id.", "Provide driver_id as a valid integer or null.", 400)
 
     try:
         shipment = Shipment.query.filter_by(hwb_number=target_hwb).first()
         if not shipment:
-            return jsonify({"error": "Shipment not found."}), 404
+            return _json_error(
+                "Shipment not found.",
+                "Verify the HWB exists on the load board before assigning a driver.",
+                404,
+            )
 
         active_leg = _shipment_current_leg(shipment)
         if not active_leg:
-            return jsonify({"error": "No active leg found for this shipment."}), 400
+            return _json_error(
+                "No active leg found for this shipment.",
+                "Confirm shipment leg data is initialized, then retry assignment.",
+                400,
+            )
 
         active_leg.assigned_driver_id = driver_id
         if driver_id and active_leg.status == ShipmentLegStatus.PENDING:
@@ -812,7 +865,11 @@ def assign_driver_to_load():
         return jsonify({"success": True})
     except Exception as exc:
         db.session.rollback()
-        return jsonify({"error": str(exc)}), 500
+        return _json_error(
+            str(exc),
+            "Retry once. If the issue persists, provide the HWB and error details to support.",
+            500,
+        )
 
 
 @paperwork_bp.post("/load-board/upload-csv")
@@ -824,7 +881,7 @@ def upload_load_board_csv():
 
     csv_file = request.files.get("load_board_csv")
     if not csv_file or not csv_file.filename:
-        flash("Please choose a CSV file to upload.")
+        flash("Please choose a CSV file to upload. Remediation: select a .csv file and submit again.")
         return redirect(url_for("paperwork.active_load_board"))
 
     try:
@@ -837,13 +894,13 @@ def upload_load_board_csv():
                 break
 
         if header_index is None:
-            flash("CSV is missing required headers.")
+            flash("CSV is missing required headers. Remediation: include the export row containing HWB and Mawb# columns.")
             return redirect(url_for("paperwork.active_load_board"))
 
         reader = csv.DictReader(decoded_lines[header_index:])
         rows = list(reader)
     except Exception:
-        flash("Unable to read the CSV file. Ensure it is a valid format.")
+        flash("Unable to read the CSV file. Remediation: save as UTF-8 CSV and re-upload.")
         return redirect(url_for("paperwork.active_load_board"))
 
     required_fields = {
@@ -853,7 +910,7 @@ def upload_load_board_csv():
         "Dest",
     }
     if not rows:
-        flash("CSV is empty or missing headers.")
+        flash("CSV is empty or missing headers. Remediation: include at least one shipment row and required headers.")
         return redirect(url_for("paperwork.active_load_board"))
 
     csv_headers = set(rows[0].keys())
